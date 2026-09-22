@@ -52,6 +52,15 @@ per restock. State is saved between runs on a `monitor-state` branch.
 4. Go to **Actions → Pokémon restock monitor → Run workflow**. Tick *Send a test notification* first
    to confirm your phone gets it, then run it again unticked.
 
+**Repeat alerts:** while an item stays in stock (sold by Target), you get a "🔁 STILL IN STOCK"
+reminder on each run, about every 15 minutes, up to 6 times. Change this with repository
+variables `RESTOCK_REMINDER_MINUTES` / `RESTOCK_REMINDER_MAX` (`RESTOCK_REMINDER_MAX=0` turns it off).
+
+**Fastest checkout:** install the Target app and save your address and payment method in it.
+Tapping **OPEN PRODUCT** opens the item in the app, so buying is *Add to cart → Place order*. The
+monitor never adds to cart or buys for you: a cart doesn't reserve stock, and automating a
+signed-in Target account is against Target's terms.
+
 To change which products are watched, edit the CSV (`name,tcin,upc,dpci`). If Target can't be read
 from GitHub's servers, you get one "can't read Target" alert a day instead of silence. You can
 also try the repository variable `TARGET_USE_BROWSER=true`. GitHub sometimes starts scheduled runs
@@ -392,7 +401,7 @@ scheduler tick (5s) ─► due products ─► RetailerMonitor.check()  ──(r
 pytest -q
 ```
 
-88 tests. None of them touch a live website (retailer responses are mocked). They cover the 10
+106 tests. None of them touch a live website (retailer responses are mocked). They cover the 10
 required cases (OUT_OF_STOCK→AVAILABLE, AVAILABLE→OUT_OF_STOCK, AVAILABLE→AVAILABLE, false positive,
 rate limit, HTTP error, unknown status, third-party seller, store unavailable, duplicate-notification
 prevention) plus restart recovery, Retry-After parsing, the circuit breaker, bot-challenge stopping,

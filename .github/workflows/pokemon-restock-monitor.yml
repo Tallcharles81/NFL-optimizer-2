@@ -60,6 +60,9 @@ jobs:
       # sellers and listings whose seller can't be determined never alert.
       ACCEPT_THIRD_PARTY: "false"
       ACCEPT_UNKNOWN_SELLER: "false"
+      # Remind again while still in stock (each run is ~15 min apart)
+      RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
+      RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
     steps:
       - uses: actions/checkout@v4
 

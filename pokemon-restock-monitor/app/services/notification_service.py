@@ -95,13 +95,20 @@ class NotificationService:
         if product.upc:
             extra["UPC"] = product.upc
         extra["Verified"] = "Yes - confirmed by independent re-check"
+        title = "🚨 POKÉMON RESTOCK DETECTED"
+        if event.event_type == EventType.RESTOCK_REMINDER.value:
+            title = f"🔁 STILL IN STOCK (reminder {details.get('reminder')} of {details.get('reminder_max')})"
+            extra["Verified"] = "Still in stock on the latest check"
+            extra.pop("Change", None)
+            if details.get("since"):
+                extra["In stock since"] = self.format_time(datetime.fromisoformat(details["since"]))
         store = "Online" if not product.store_id else ", ".join(
             p for p in (product.city, product.state) if p) or product.store_name or product.store_id
         if product.store_id and product.store_name:
             store = f"{store} ({product.store_name})"
         return AlertMessage(
             kind="restock",
-            title="🚨 POKÉMON RESTOCK DETECTED",
+            title=title,
             product_name=product.product_name,
             retailer=display,
             store=store,
@@ -200,8 +207,9 @@ class NotificationService:
     async def send_restock_alert(self, event_id: int) -> DeliveryReport:
         with self.db.session() as s:
             event = s.get(Event, event_id)
-            if event is None or event.event_type != EventType.RESTOCK_CONFIRMED.value:
-                raise ValueError(f"Event {event_id} is not a RESTOCK_CONFIRMED event")
+            if event is None or event.event_type not in (EventType.RESTOCK_CONFIRMED.value,
+                                                         EventType.RESTOCK_REMINDER.value):
+                raise ValueError(f"Event {event_id} is not a RESTOCK_CONFIRMED or RESTOCK_REMINDER event")
             product = s.get(Product, event.product_id)
             _ = product.retailer  # load relationship before session closes
             message = self.build_restock_message(event, product)

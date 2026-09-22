@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     alert_on_preorder: bool = False
     alert_on_unknown_to_available: bool = True
     pending_notification_max_age_minutes: float = 15
+    # Repeat the alert while the item stays in stock (0 = no reminders).
+    restock_reminder_minutes: float = 10
+    restock_reminder_max: int = 6
 
     # --- Notifications -------------------------------------------------------
     notify_console: bool = True
