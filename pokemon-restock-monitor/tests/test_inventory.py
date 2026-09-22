@@ -292,3 +292,35 @@ async def test_target_monitor_reads_buy_box(settings):
     assert o.status == S.AVAILABLE and o.seller_type == SellerType.THIRD_PARTY
     assert not evaluate(o, ONLINE, settings).alertable
     await mgr.aclose()
+
+
+# Trimmed from a live, in-stock Target Plus (marketplace) listing.
+TARGET_PLUS_IN_STOCK = """<html><body>
+<div data-test="module-product-detail-price-v2"><div data-test="price-cdui"><span data-test="text-quill-insert-0">$21.99</span></div>
+<button aria-label="More info about pricing" type="button"></button></div>
+<div data-module-type="ProductDetailAddToCart"><div data-test="module-product-detail-add-to-cart"><div class="h-display-flex">
+<button data-test="quantity-stepper" id="addToCartButtonOrTextIdFor1005452393" type="button">Add to cart</button></div></div></div>
+<div data-module-type="ProductDetailFulfillmentMessaging"><span>Final sale item</span>
+<a aria-label="Sold &amp; shipped by Collectors Emporium. View partner details" data-test="targetPlusExtraInfoSection"
+ href="/sp/collectors-emporium/-/N-10026644"><span>Sold &amp; shipped by </span><span>Collectors Emporium</span></a>
+<button type="button">Report this item</button></div></body></html>"""
+
+
+def test_target_plus_listing_is_third_party():
+    offer = parse_target_buy_box(TARGET_PLUS_IN_STOCK)
+    assert offer.status == S.AVAILABLE and offer.price == 21.99
+    assert offer.seller_name == "Collectors Emporium"
+
+
+def test_target_plus_seller_name_from_text_when_no_aria_label():
+    html = TARGET_PLUS_IN_STOCK.replace('aria-label="Sold &amp; shipped by Collectors Emporium. View partner details" ', "")
+    assert parse_target_buy_box(html).seller_name == "Collectors Emporium"
+
+
+async def test_target_plus_listing_does_not_alert(settings):
+    mgr = RetailerManager(settings, transport=_target_transport(TARGET_PLUS_IN_STOCK))
+    o = await mgr.get("target").safe_check(ONLINE)
+    assert o.status == S.AVAILABLE and o.seller_type == SellerType.THIRD_PARTY
+    ev = evaluate(o, ONLINE, settings)
+    assert not ev.alertable and ev.ignored_reason == "THIRD_PARTY"
+    await mgr.aclose()

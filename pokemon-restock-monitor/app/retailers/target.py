@@ -49,8 +49,11 @@ OUT_OF_STOCK_RE = re.compile(r"\b(out of stock|sold out|no longer available|not 
 PREORDER_RE = re.compile(r"\bpre-?order\b", re.I)
 BUY_LABEL_RE = re.compile(r"\b(add to cart|pre-?order|ship it|pick it up|deliver it|buy now)\b", re.I)
 PRICE_RE = re.compile(r"\$\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)")
-SELLER_RE = re.compile(r"sold (?:and shipped )?by\s+([A-Za-z0-9&'.,\- ]{2,60}?)(?=\s*(?:$|\||\.|learn|ships|shipping|return))",
-                       re.I)
+SELLER_RE = re.compile(r"sold\s*(?:(?:and|&)\s*shipped\s*)?by\s+([A-Za-z0-9&'.,\- ]{2,60}?)"
+                       r"(?=\s*(?:$|\||\.\s|\.$|view|learn|ships|shipping|return|report))", re.I)
+# Target Plus (marketplace partner) listings carry this block in the buy box.
+TARGET_PLUS_SELECTOR = '[data-test="targetPlusExtraInfoSection"]'
+
 
 
 def _first(soup, selectors):
@@ -78,9 +81,16 @@ def parse_target_buy_box(html: str) -> ParsedOffer | None:
     text = " ".join(parts)
     price_match = PRICE_RE.search(price_el.get_text(" ", strip=True)) if price_el else None
     price = float(price_match.group(1).replace(",", "")) if price_match else None
-    seller_match = SELLER_RE.search(text)
-    # Target Plus partner listings say "Sold and shipped by <partner>"; otherwise Target sells it.
-    seller = seller_match.group(1).strip() if seller_match else "Target"
+    # Target Plus partner listings say "Sold & shipped by <partner>"; otherwise Target sells it.
+    seller = "Target"
+    partner = soup.select_one(TARGET_PLUS_SELECTOR)
+    if partner is not None:
+        m = SELLER_RE.search(partner.get("aria-label") or "") or SELLER_RE.search(partner.get_text(" ", strip=True))
+        seller = m.group(1).strip() if m else "Target Plus partner"
+    else:
+        m = SELLER_RE.search(text)
+        if m:
+            seller = m.group(1).strip()
 
     buttons = []
     if atc is not None:
