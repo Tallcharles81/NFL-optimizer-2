@@ -90,6 +90,10 @@ class NotificationService:
             extra["Quantity"] = str(details["quantity"])
         if product.max_quantity:
             extra["Max qty to buy"] = str(product.max_quantity)
+        if product.dpci:
+            extra["DPCI (in store)"] = product.dpci
+        if product.upc:
+            extra["UPC"] = product.upc
         extra["Verified"] = "Yes - confirmed by independent re-check"
         store = "Online" if not product.store_id else ", ".join(
             p for p in (product.city, product.state) if p) or product.store_name or product.store_id

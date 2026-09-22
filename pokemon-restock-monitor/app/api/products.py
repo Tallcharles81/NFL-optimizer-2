@@ -43,6 +43,8 @@ def product_dict(p: Product) -> dict:
         "category": p.category,
         "enabled": p.enabled,
         "max_quantity": p.max_quantity,
+        "upc": p.upc,
+        "dpci": p.dpci,
         "store_id": p.store_id,
         "store_name": p.store_name,
         "city": p.city,

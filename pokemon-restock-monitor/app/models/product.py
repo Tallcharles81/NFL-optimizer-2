@@ -29,6 +29,9 @@ class Product(Base):
     category: Mapped[str | None] = mapped_column(String(100), nullable=True, default="pokemon-tcg")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     max_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Extra identifiers, shown in alerts (DPCI/UPC help when buying in store)
+    upc: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    dpci: Mapped[str | None] = mapped_column(String(12), nullable=True)
 
     store_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     store_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

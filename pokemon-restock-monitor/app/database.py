@@ -86,6 +86,26 @@ class Database:
         import app.models  # noqa: F401  (register models)
 
         Base.metadata.create_all(self.engine)
+        self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        """Additive-only schema upgrade: add new nullable columns to existing tables.
+
+        ``create_all`` never alters existing tables, so a database created by an
+        older version would otherwise be missing columns added later.
+        """
+        from sqlalchemy import inspect
+
+        insp = inspect(self.engine)
+        with self.engine.begin() as conn:
+            for table in Base.metadata.sorted_tables:
+                if not insp.has_table(table.name):
+                    continue
+                existing = {c["name"] for c in insp.get_columns(table.name)}
+                for col in table.columns:
+                    if col.name not in existing and col.nullable:
+                        ddl = col.type.compile(dialect=self.engine.dialect)
+                        conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl}'))
 
     @contextmanager
     def session(self) -> Iterator[Session]:

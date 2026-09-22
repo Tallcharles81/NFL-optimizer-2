@@ -30,9 +30,9 @@
 <form class="card" method="post" action="/products">
   <div class="form-grid">
     <div><label>Retailer</label><select name="retailer">{% for slug, name in retailers %}<option value="{{ slug }}">{{ name }}</option>{% endfor %}</select></div>
-    <div><label>SKU (Target: TCIN)</label><input name="sku" required placeholder="12345678"></div>
+    <div><label>SKU (Target: TCIN)</label><input name="sku" required placeholder="1010892076"></div>
     <div style="grid-column:span 2"><label>Product name</label><input name="product_name" required placeholder="Pokémon TCG: ... Elite Trainer Box"></div>
-    <div style="grid-column:span 2"><label>Product URL</label><input name="product_url" placeholder="https://www.target.com/p/-/A-12345678"></div>
+    <div style="grid-column:span 2"><label>Product URL</label><input name="product_url" placeholder="https://www.target.com/p/-/A-1010892076"></div>
     <div style="grid-column:span 2"><label>Image URL (optional)</label><input name="image_url"></div>
     <div><label>Store ID (blank = online)</label><input name="store_id" list="store-ids"></div>
     <div><label>Store name</label><input name="store_name" placeholder="Athens Target"></div>

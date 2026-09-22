@@ -122,8 +122,20 @@ python scripts/add_product.py --retailer target --sku 123456789 --name "..." \
 python scripts/add_product.py --retailer target --sku 123456789 --name "..." --all-stores --online
 ```
 
-Other options: `--image-url`, `--max-quantity`, `--poll-interval`, `--accept-third-party yes|no`,
+Other options: `--upc`, `--dpci`, `--image-url`, `--max-quantity`, `--poll-interval`, `--accept-third-party yes|no`,
 `--disabled`.
+
+**Import a list:** `catalog/target_30th_celebration.csv` already holds the 30th Celebration
+lineup (TCIN, UPC, DPCI). Import it with:
+
+```bash
+python scripts/import_products.py catalog/target_30th_celebration.csv --max-quantity 2
+```
+
+Target identifiers: the **TCIN** (e.g. `1010892076`, the number after `/A-` in the URL) is the SKU
+the monitor uses. The **UPC** (12-digit barcode) and **DPCI** (`361-00-8095`, Target's in-store item
+number) are optional and appear in alerts, since the DPCI helps store staff find the item. Putting a
+UPC or DPCI in the SKU field is rejected.
 
 **Dashboard:** `/products` has an "Add product" form, plus Check / Disable / Delete buttons.
 
@@ -353,7 +365,7 @@ scheduler tick (5s) ─► due products ─► RetailerMonitor.check()  ──(r
 pytest -q
 ```
 
-78 tests. None of them touch a live website (retailer responses are mocked). They cover the 10
+84 tests. None of them touch a live website (retailer responses are mocked). They cover the 10
 required cases (OUT_OF_STOCK→AVAILABLE, AVAILABLE→OUT_OF_STOCK, AVAILABLE→AVAILABLE, false positive,
 rate limit, HTTP error, unknown status, third-party seller, store unavailable, duplicate-notification
 prevention) plus restart recovery, Retry-After parsing, the circuit breaker, bot-challenge stopping,

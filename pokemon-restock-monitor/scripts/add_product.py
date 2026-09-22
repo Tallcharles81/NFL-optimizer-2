@@ -49,6 +49,8 @@ def main() -> int:
     p.add_argument("--state")
     p.add_argument("--zip", dest="zip_code")
     p.add_argument("--max-quantity", type=int)
+    p.add_argument("--upc", help="UPC barcode (shown in the alert)")
+    p.add_argument("--dpci", help="Target DPCI, e.g. 361-00-8095 (shown in the alert; useful in store)")
     p.add_argument("--poll-interval", type=float, help="Per-product NORMAL poll interval in seconds")
     p.add_argument("--accept-third-party", choices=["yes", "no"], help="Override ACCEPT_THIRD_PARTY for this product")
     p.add_argument("--disabled", action="store_true", help="Add but don't monitor yet")
@@ -59,7 +61,7 @@ def main() -> int:
     settings = get_settings()
     db = init_database(settings.database_url)
     base = dict(retailer=args.retailer, sku=args.sku, product_name=args.name, product_url=args.url,
-                image_url=args.image_url, max_quantity=args.max_quantity, enabled=not args.disabled,
+                image_url=args.image_url, max_quantity=args.max_quantity, upc=args.upc, dpci=args.dpci, enabled=not args.disabled,
                 poll_interval_seconds=args.poll_interval,
                 accept_third_party=None if args.accept_third_party is None else args.accept_third_party == "yes")
 

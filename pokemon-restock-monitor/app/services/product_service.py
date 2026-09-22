@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from pydantic import BaseModel, Field, field_validator
+import re
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,6 +18,9 @@ from app.retailers.simulated import SimulatedRetailer
 from app.retailers.target import TargetMonitor
 
 logger = logging.getLogger("products")
+
+UPC_RE = re.compile(r"^\d{12,14}$")
+DPCI_RE = re.compile(r"^\d{3}-\d{2}-\d{4}$")
 
 
 class ProductCreate(BaseModel):
@@ -31,6 +36,8 @@ class ProductCreate(BaseModel):
     state: str | None = None
     zip_code: str | None = None
     max_quantity: int | None = Field(default=None, ge=1)
+    upc: str | None = None
+    dpci: str | None = None
     enabled: bool = True
     poll_interval_seconds: float | None = Field(default=None, gt=0)
     accept_third_party: bool | None = None
@@ -51,7 +58,7 @@ class ProductCreate(BaseModel):
         return v.strip()
 
     @field_validator("product_url", "image_url", "store_id", "store_name", "city", "state", "zip_code",
-                     "category", mode="before")
+                     "category", "upc", "dpci", mode="before")
     @classmethod
     def _blank_to_none(cls, v):
         if isinstance(v, str):
@@ -66,6 +73,32 @@ class ProductCreate(BaseModel):
             raise ValueError("URL must start with https://")
         return v
 
+    @field_validator("upc")
+    @classmethod
+    def _upc(cls, v: str | None) -> str | None:
+        if v and not UPC_RE.match(v):
+            raise ValueError(f"UPC {v!r} should be 12-14 digits")
+        return v
+
+    @field_validator("dpci")
+    @classmethod
+    def _dpci(cls, v: str | None) -> str | None:
+        if v and not DPCI_RE.match(v):
+            raise ValueError(f"DPCI {v!r} should look like 361-00-8095")
+        return v
+
+    @model_validator(mode="after")
+    def _target_sku_is_tcin(self):
+        # A UPC or DPCI in the SKU field would silently monitor the wrong URL.
+        if self.retailer == "target":
+            if DPCI_RE.match(self.sku):
+                raise ValueError(f"{self.sku} is a Target DPCI (in-store number), not a TCIN. Pass it as "
+                                 "--dpci and use the number after /A- in the target.com URL as --sku.")
+            if UPC_RE.match(self.sku) and len(self.sku) >= 12:
+                raise ValueError(f"{self.sku} looks like a UPC barcode, not a TCIN. Pass it as --upc and "
+                                 "use the number after /A- in the target.com URL as --sku.")
+        return self
+
 
 class ProductUpdate(BaseModel):
     product_name: str | None = None
@@ -73,6 +106,8 @@ class ProductUpdate(BaseModel):
     image_url: str | None = None
     enabled: bool | None = None
     max_quantity: int | None = None
+    upc: str | None = None
+    dpci: str | None = None
     poll_interval_seconds: float | None = None
     accept_third_party: bool | None = None
 
@@ -145,7 +180,7 @@ def validation_warnings(data: ProductCreate) -> list[str]:
         if not TargetMonitor.is_valid_tcin(data.sku):
             from_url = TargetMonitor.tcin_from_url(data.product_url)
             warnings.append(
-                f"Target SKUs are numeric TCINs (e.g. 12345678). {data.sku!r} doesn't look like one"
+                f"Target SKUs are numeric TCINs (e.g. 1010892076). {data.sku!r} doesn't look like one"
                 + (f"; the URL contains TCIN {from_url}" if from_url else "")
             )
     elif cls is not SimulatedRetailer and not data.product_url:
@@ -188,6 +223,8 @@ def create_product(session: Session, data: ProductCreate) -> Product:
         category=data.category,
         enabled=data.enabled,
         max_quantity=data.max_quantity,
+        upc=data.upc,
+        dpci=data.dpci,
         store_id=data.store_id,
         store_name=store_fields.get("store_name", data.store_name),
         city=store_fields.get("city", data.city),
