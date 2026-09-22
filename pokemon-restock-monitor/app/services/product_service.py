@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-
 import re
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -264,3 +263,40 @@ def list_products(session: Session) -> list[Product]:
         .options(selectinload(Product.retailer), selectinload(Product.state_row))
         .order_by(Product.product_name, Product.store_id)
     ))
+
+
+def import_catalog(session: Session, path: str, retailer: str = "target", max_quantity: int | None = None,
+                   locations: list[dict] | None = None, enabled: bool = True) -> dict:
+    """Idempotently import products from a CSV (name,tcin[,upc,dpci,url,max_quantity]).
+
+    Returns {"added": [...], "existing": n, "errors": [...]}.
+    """
+    import csv
+
+    result = {"added": [], "existing": 0, "errors": []}
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    for raw in rows:
+        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+        sku = row.get("tcin") or row.get("sku")
+        if not sku:
+            result["errors"].append(f"{row.get('name')}: no TCIN")
+            continue
+        mq = row.get("max_quantity") or max_quantity
+        for loc in locations or [{}]:
+            try:
+                data = ProductCreate(retailer=retailer, sku=sku, product_name=row.get("name") or sku,
+                                     product_url=row.get("url") or None, upc=row.get("upc") or None,
+                                     dpci=row.get("dpci") or None, max_quantity=int(mq) if mq else None,
+                                     enabled=enabled, **loc)
+            except ValidationError as exc:
+                result["errors"].append(f"{row.get('name')}: {exc.errors()[0]['msg']}")
+                continue
+            try:
+                with session.begin_nested():
+                    product = create_product(session, data)
+            except ValueError:
+                result["existing"] += 1
+                continue
+            result["added"].append(product)
+    return result

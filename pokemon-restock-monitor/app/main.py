@@ -4,6 +4,7 @@
     python -m app.main --no-monitor     # dashboard only
     python -m app.main --init-db        # create tables and exit
     python -m app.main --simulation     # end-to-end simulated restock test
+    python -m app.main --once           # check everything once and exit (GitHub Actions)
 """
 
 from __future__ import annotations
@@ -64,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="with --simulation: only use the console channel (don't send to Discord etc.)")
     parser.add_argument("--no-monitor", action="store_true", help="serve the dashboard without polling")
     parser.add_argument("--init-db", action="store_true", help="create database tables and exit")
+    parser.add_argument("--once", action="store_true", help="check every product once, alert, and exit")
+    parser.add_argument("--catalog", help="with --once: CSV of products to import first (idempotent)")
     parser.add_argument("--host")
     parser.add_argument("--port", type=int)
     args = parser.parse_args(argv)
@@ -77,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(run_simulation(settings, keep_running=args.keep_running,
                                           external_notify=not args.no_external_notify,
                                           host=args.host, port=args.port))
+
+    if args.once:
+        from app.oneshot import run_once
+
+        asyncio.run(run_once(settings, catalog=args.catalog))
+        return 0
 
     if args.init_db:
         from app.database import init_database

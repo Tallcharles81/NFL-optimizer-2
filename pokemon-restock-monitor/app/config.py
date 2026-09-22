@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     discord_webhook_url: str | None = None
     discord_mention: str | None = None  # e.g. "@here" or "<@&ROLE_ID>"
     discord_use_buttons: bool = True
+    ntfy_topic: str | None = None  # phone push via the ntfy app
+    ntfy_server: str = "https://ntfy.sh"
+    ntfy_token: str | None = None
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     email_enabled: bool = False
@@ -154,6 +157,8 @@ class Settings(BaseSettings):
     def secret_fields(self) -> set[str]:
         return {
             "discord_webhook_url",
+            "ntfy_topic",
+            "ntfy_token",
             "telegram_bot_token",
             "smtp_password",
             "dashboard_password",

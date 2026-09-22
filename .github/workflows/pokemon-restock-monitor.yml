@@ -1,0 +1,106 @@
+# Pokémon restock monitor on GitHub Actions: no always-on computer needed.
+#
+# Every ~15 minutes: check each product in the catalog, verify any restock with
+# an independent re-check, and alert (Discord and/or ntfy phone push) once per
+# restock. State is kept on the `monitor-state` branch between runs.
+#
+# Setup (repo Settings -> Secrets and variables -> Actions):
+#   Secrets:   DISCORD_WEBHOOK_URL and/or NTFY_TOPIC   (at least one)
+#              DISCORD_MENTION (optional, e.g. @here), CONTACT_EMAIL (optional)
+#   Variables: TARGET_USE_BROWSER = true  (optional; render pages with Chromium)
+#
+# Scheduled workflows only run from the default branch. GitHub may start runs a
+# few minutes late when it is busy.
+
+name: Pokémon restock monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: "Send a test notification instead of checking stock"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pokemon-restock-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: pokemon-restock-monitor
+    env:
+      DATABASE_URL: sqlite:///./data/restock.db
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL || 'unset@example.com' }}
+      TARGET_USE_BROWSER: ${{ vars.TARGET_USE_BROWSER || 'false' }}
+      TIMEZONE: ${{ vars.TIMEZONE || 'America/New_York' }}
+      NOTIFY_CONSOLE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pokemon-restock-monitor/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Install browser (only if TARGET_USE_BROWSER=true)
+        if: env.TARGET_USE_BROWSER == 'true'
+        run: |
+          pip install -r requirements-browser.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Check that a notification channel is configured
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ] && [ -z "$NTFY_TOPIC" ]; then
+            echo "::error::Add a DISCORD_WEBHOOK_URL or NTFY_TOPIC secret (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
+      - name: Send test notification
+        if: inputs.test_notification
+        run: python scripts/test_notifications.py
+
+      - name: Restore saved state
+        if: ${{ !inputs.test_notification }}
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin monitor-state 2>/dev/null; then
+            git show origin/monitor-state:restock.db > data/restock.db
+            echo "Restored state from monitor-state branch"
+          else
+            echo "No saved state yet (first run)"
+          fi
+
+      - name: Check stock
+        if: ${{ !inputs.test_notification }}
+        run: python -m app.main --once --catalog catalog/target_30th_celebration.csv
+
+      - name: Save state
+        if: ${{ always() && !inputs.test_notification && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tmp="$(mktemp -d)"
+          cp data/restock.db "$tmp/restock.db"
+          cd "$tmp"
+          git init -q -b monitor-state
+          git add restock.db
+          git -c user.name="restock-monitor" -c user.email="restock-monitor@users.noreply.github.com" \
+            commit -q -m "Monitor state $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" monitor-state

@@ -15,12 +15,15 @@ def build_channels(settings: Settings) -> list[Notifier]:
     from app.notifications.console import ConsoleNotifier
     from app.notifications.discord import DiscordNotifier
     from app.notifications.email import EmailNotifier
+    from app.notifications.ntfy import NtfyNotifier
     from app.notifications.telegram import TelegramNotifier
 
     channels: list[Notifier] = []
     if settings.discord_webhook_url:
         channels.append(DiscordNotifier(settings.discord_webhook_url, settings.discord_mention,
                                         settings.discord_use_buttons))
+    if settings.ntfy_topic:
+        channels.append(NtfyNotifier(settings.ntfy_topic, settings.ntfy_server, settings.ntfy_token))
     if settings.telegram_bot_token and settings.telegram_chat_id:
         channels.append(TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id))
     if settings.email_enabled:

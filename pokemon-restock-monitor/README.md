@@ -33,6 +33,33 @@ polling that retailer** for a cooldown period and tells you.
 
 ---
 
+## Quick start: run free on GitHub (no computer needed)
+
+The workflow `.github/workflows/pokemon-restock-monitor.yml` (at the repo root) runs the monitor on
+GitHub Actions about every 15 minutes, for free on public repos. It checks every product in
+`catalog/target_30th_celebration.csv`, verifies any restock with a second check, and alerts once
+per restock. State is saved between runs on a `monitor-state` branch.
+
+1. **Get phone alerts** (pick one or both):
+   - **ntfy:** install the free *ntfy* app, tap **+**, and subscribe to a long, random topic name
+     (e.g. `pokemon-7Hq2xL9vR4`). Treat the name like a password.
+   - **Discord:** create a channel webhook (Server Settings → Integrations → Webhooks) and install
+     the Discord app on your phone.
+2. On GitHub, go to **Settings → Secrets and variables → Actions → New repository secret** and add
+   `NTFY_TOPIC` and/or `DISCORD_WEBHOOK_URL`. Optional: `DISCORD_MENTION` (`@here`) and `CONTACT_EMAIL`.
+3. The workflow must be on the **default branch** (e.g. `main`), because GitHub only runs scheduled
+   workflows from there.
+4. Go to **Actions → Pokémon restock monitor → Run workflow**. Tick *Send a test notification* first
+   to confirm your phone gets it, then run it again unticked.
+
+To change which products are watched, edit the CSV (`name,tcin,upc,dpci`). If Target can't be read
+from GitHub's servers, you get one "can't read Target" alert a day instead of silence. You can
+also try the repository variable `TARGET_USE_BROWSER=true`. GitHub sometimes starts scheduled runs
+a few minutes late, and turns schedules off in repos with no activity for 60 days (it emails you
+first). The saved state on `monitor-state` contains only stock history, never secrets.
+
+---
+
 ## 1. Installation
 
 Requires Python 3.12+.
@@ -195,7 +222,7 @@ Detected:  4:17:32 PM EDT
 [OPEN PRODUCT]  → the retailer's product page
 ```
 
-Telegram: set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Email: `EMAIL_ENABLED=true` plus the
+Phone push without Discord: set `NTFY_TOPIC` (free ntfy app). Telegram: set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Email: `EMAIL_ENABLED=true` plus the
 `SMTP_*`, `EMAIL_FROM`, and `EMAIL_TO` settings. Alerts also print to the console
 (`NOTIFY_CONSOLE=true`).
 
@@ -365,7 +392,7 @@ scheduler tick (5s) ─► due products ─► RetailerMonitor.check()  ──(r
 pytest -q
 ```
 
-84 tests. None of them touch a live website (retailer responses are mocked). They cover the 10
+88 tests. None of them touch a live website (retailer responses are mocked). They cover the 10
 required cases (OUT_OF_STOCK→AVAILABLE, AVAILABLE→OUT_OF_STOCK, AVAILABLE→AVAILABLE, false positive,
 rate limit, HTTP error, unknown status, third-party seller, store unavailable, duplicate-notification
 prevention) plus restart recovery, Retry-After parsing, the circuit breaker, bot-challenge stopping,
