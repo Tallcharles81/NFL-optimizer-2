@@ -36,9 +36,12 @@ polling that retailer** for a cooldown period and tells you.
 ## Quick start: run free on GitHub (no computer needed)
 
 The workflow `.github/workflows/pokemon-restock-monitor.yml` (at the repo root) runs the monitor on
-GitHub Actions about every 15 minutes, for free on public repos. It checks every product in
-`catalog/target_30th_celebration.csv`, verifies any restock with a second check, and alerts once
-per restock. State is saved between runs on a `monitor-state` branch.
+GitHub Actions, for free on public repos. Each run re-checks every product in
+`catalog/target_30th_celebration.csv` about every 75 seconds for 20 minutes, then queues the next
+run itself, so checking is continuous (a 15-minute schedule is only a backup). Restocks are verified
+with a second check and alerted once. State is saved between runs on a `monitor-state` branch.
+To stop monitoring, set the repository variable `MONITOR_ENABLED=false` or disable the workflow in
+the Actions tab.
 
 1. **Get phone alerts** (pick one or both):
    - **ntfy:** install the free *ntfy* app, tap **+**, and subscribe to a long, random topic name
@@ -53,7 +56,7 @@ per restock. State is saved between runs on a `monitor-state` branch.
    to confirm your phone gets it, then run it again unticked.
 
 **Repeat alerts:** while an item stays in stock (sold by Target), you get a "🔁 STILL IN STOCK"
-reminder on each run, about every 15 minutes, up to 6 times. Change this with repository
+reminder about every 10 minutes, up to 6 times. Change this with repository
 variables `RESTOCK_REMINDER_MINUTES` / `RESTOCK_REMINDER_MAX` (`RESTOCK_REMINDER_MAX=0` turns it off).
 
 **BUY WITH GOOGLE button:** Target alerts also have a button that opens Google AI Mode already

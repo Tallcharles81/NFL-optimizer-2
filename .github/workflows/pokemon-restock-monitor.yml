@@ -1,8 +1,12 @@
 # Pokémon restock monitor on GitHub Actions: no always-on computer needed.
 #
-# A run starts every ~15 minutes and keeps re-checking every product about every
-# 75 seconds for 20 minutes, so runs overlap and there is always one checking or
-# queued (only one runs at a time). Any restock is verified with an independent
+# Each run keeps re-checking every product about every 75 seconds for 20
+# minutes, then queues the next run itself, so checking never stops. The
+# 15-minute schedule is only a backup (GitHub's scheduler can be late or not
+# fire at all). Only one run happens at a time.
+#
+# Off switch: set the repository variable MONITOR_ENABLED=false, or disable the
+# workflow in the Actions tab. Any restock is verified with an independent
 # re-check, then alerted (Discord and/or ntfy phone push) once, plus reminders
 # while it stays in stock. State is kept on the `monitor-state` branch.
 #
@@ -45,6 +49,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # lets a finished run queue the next one
 
 concurrency:
   group: pokemon-restock-monitor
@@ -53,7 +58,7 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     defaults:
       run:
         working-directory: pokemon-restock-monitor
@@ -160,3 +165,20 @@ jobs:
           git -c user.name="restock-monitor" -c user.email="restock-monitor@users.noreply.github.com" \
             commit -q -m "Monitor state $(date -u +%FT%TZ)"
           git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" monitor-state
+
+      - name: Queue the next run (keeps monitoring continuous)
+        if: >-
+          ${{ always() && !cancelled() && !inputs.test_notification && !inputs.diagnose
+          && !inputs.live_test_tcins && vars.MONITOR_ENABLED != 'false'
+          && github.ref_name == github.event.repository.default_branch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" != "success" ]; then
+            # Don't spin on a persistent failure: wait before trying again.
+            echo "Run did not succeed ($JOB_STATUS); waiting 10 minutes before queueing the next run"
+            sleep 600
+          fi
+          gh workflow run pokemon-restock-monitor.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+          echo "Next run queued"
