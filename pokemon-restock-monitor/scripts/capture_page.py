@@ -83,6 +83,17 @@ async def main() -> int:
         for m in list(re.finditer(re.escape(kw), html, re.I))[:3]:
             snippet = html[max(0, m.start() - 200):m.end() + 200].replace("\n", " ")
             lines.append(f"[html:{kw}] ...{snippet}...")
+    for sel in ('[data-module-type="ProductDetailAddToCart"]', '[data-test="module-product-detail-price-v2"]',
+                '[data-module-type="ProductDetailFulfillmentMessaging"]'):
+        el = soup.select_one(sel)
+        lines.append(f"=== {sel} ===")
+        lines.append(str(el)[:3500] if el else "(not found)")
+    try:
+        from app.retailers.target import parse_target_buy_box
+
+        lines.append(f"buy box parse: {parse_target_buy_box(html)}")
+    except ImportError:
+        pass
     buttons = sorted({b.get_text(" ", strip=True)[:60] for b in soup.find_all("button") if b.get_text(strip=True)})
     lines.append(f"buttons: {json.dumps(buttons[:80])}")
     data_tests = sorted({t.get("data-test") for t in soup.find_all(attrs={"data-test": True})})

@@ -25,9 +25,13 @@ on:
         type: boolean
         default: false
       diagnose:
-        description: "Diagnostics: save one Target product page as an artifact (no stock check)"
+        description: "Diagnostics: capture one Target product page (no stock check)"
         type: boolean
         default: false
+      diagnose_sku:
+        description: "TCIN to capture when diagnosing"
+        type: string
+        default: "1010892076"
 
 permissions:
   contents: write
@@ -84,7 +88,7 @@ jobs:
       - name: Diagnose (capture one product page)
         if: inputs.diagnose
         run: |
-          python scripts/capture_page.py --retailer target --sku 1010892076 --out diag || true
+          python scripts/capture_page.py --retailer target --sku "${{ inputs.diagnose_sku || '1010892076' }}" --out diag || true
           echo "===== SUMMARY ====="
           cat diag/summary.txt || true
 

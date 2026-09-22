@@ -184,6 +184,10 @@ class StructuredDataRetailerMonitor(RetailerMonitor):
         purchasable = [o for o in pool if o.status in (InventoryStatus.AVAILABLE, InventoryStatus.LIMITED)]
         return (purchasable or pool)[0]
 
+    def fallback_offer(self, html: str) -> ParsedOffer | None:
+        """Retailer-specific reading of the page when there is no schema.org markup."""
+        return None
+
     def missing_markup_message(self) -> str:
         return (
             f"No schema.org availability markup found on the {self.display_name} product page. "
@@ -204,10 +208,13 @@ class StructuredDataRetailerMonitor(RetailerMonitor):
                 message="Product page returned 404 (listing removed or wrong SKU/URL).",
             )
         parsed = parse_product_page(page.text)
-        if not parsed.found:
+        if parsed.found:
+            offer = self.choose_offer(parsed.offers)
+        else:
+            offer = self.fallback_offer(page.text)
+        if offer is None:
             return Observation(status=InventoryStatus.UNKNOWN, source=source, http_status=page.status_code,
                                response_time_ms=page.elapsed_ms, message=self.missing_markup_message())
-        offer = self.choose_offer(parsed.offers)
         purchasable = offer.status in (InventoryStatus.AVAILABLE, InventoryStatus.LIMITED, InventoryStatus.PREORDER)
         return Observation(
             status=offer.status,

@@ -98,11 +98,33 @@ def test_no_checkout_or_payment_functionality():
     forbidden = re.compile(r"add[_-]?to[_-]?cart|\bcheckout\b|place[_-]?order|payment|credit[_-]?card|"
                            r"card[_-]?number|\bcvv\b|submit[_-]?order|password\s*=\s*['\"]", re.I)
     allowed = {"settings.html"}  # contains the human-readable "no checkout" guarantee
+    # The Target parser *reads* whether the Add to cart button is enabled to learn the stock
+    # status. Those read-only references are allowed there -- nothing else is.
+    read_only_ok = re.compile(r"add[_-]?to[_-]?cart", re.I)
     hits = []
     for f in root.rglob("*"):
         if f.suffix not in {".py", ".html"} or f.name in allowed:
             continue
+        rel = str(f.relative_to(root))
         for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            if forbidden.search(line):
-                hits.append(f"{f.relative_to(root)}:{n}: {line.strip()}")
+            match = forbidden.search(line)
+            if not match:
+                continue
+            if rel == "retailers/target.py" and all(read_only_ok.fullmatch(m.group(0))
+                                                     for m in forbidden.finditer(line)):
+                continue
+            hits.append(f"{rel}:{n}: {line.strip()}")
     assert hits == [], "\n".join(hits)
+
+
+def test_browser_never_interacts_with_pages():
+    """The optional browser only loads and reads pages: no clicks, typing or form submits."""
+    root = Path(__file__).resolve().parents[1] / "app"
+    interaction = re.compile(r"\.(click|dblclick|fill|type|press|check|tap|select_option|set_input_files|"
+                             r"dispatch_event|submit)\(|\.evaluate\(", re.I)
+    hits = [f"{f.relative_to(root)}:{n}: {line.strip()}"
+            for f in root.rglob("*.py") if "playwright" in f.read_text(encoding="utf-8")
+            for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1)
+            if interaction.search(line)]
+    assert hits == [], "\n".join(hits)
+    assert any("playwright" in f.read_text(encoding="utf-8") for f in root.rglob("*.py"))
