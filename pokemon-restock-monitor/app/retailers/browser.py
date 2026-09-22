@@ -32,8 +32,14 @@ async def fetch_rendered_page(url: str, limiter: RateLimiter, settings: Settings
         browser = await pw.chromium.launch(headless=True)
         try:
             page = await browser.new_page(user_agent=settings.effective_user_agent)
-            resp = await page.goto(url, wait_until="networkidle",
+            resp = await page.goto(url, wait_until="domcontentloaded",
                                    timeout=settings.request_timeout_seconds * 1000 * 2)
+            # Retail pages keep background requests going, so "network idle" may never
+            # happen; wait a bounded time for the page to finish rendering instead.
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10_000)
+            except Exception:  # noqa: BLE001 - timeout is fine, use what has rendered
+                pass
             status = resp.status if resp else 0
             html = await page.content()
         finally:

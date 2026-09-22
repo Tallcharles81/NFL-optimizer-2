@@ -134,6 +134,7 @@ class InventoryMonitor:
 
         # 3. Persist and decide
         system_alerts: list[tuple[str, str, str]] = []
+        reminders: list[int] = []
         with self.db.session() as s:
             state = s.scalar(select(InventoryState).where(InventoryState.product_id == product_id))
             now = self.clock()
@@ -144,7 +145,8 @@ class InventoryMonitor:
                 self._handle_error(s, ref, state, obs)
             else:
                 self.last_successful_check_at = now
-                outcome.detection = self._apply(s, ref, state, obs, ev, prev_status, prev_seller, prev_success_at)
+                outcome.detection = self._apply(s, ref, state, obs, ev, prev_status, prev_seller, prev_success_at,
+                                                reminders)
             retailer_row = s.scalar(select(Retailer).where(Retailer.slug == ref.retailer))
             state.next_check_at = now + timedelta(seconds=self.policy.next_interval(
                 state, ref, retailer_row, type(retailer), now, retry_after=obs.retry_after))
@@ -154,6 +156,9 @@ class InventoryMonitor:
 
         for key, title, text in system_alerts:
             await self.notifications.send_system_alert(key, title, text)
+        for event_id in reminders:
+            report = await self.notifications.send_restock_alert(event_id)
+            outcome.notified_channels += report.sent
 
         # 4. Verify + alert
         if outcome.detection is not None:
@@ -170,7 +175,8 @@ class InventoryMonitor:
 
     # ------------------------------------------------------------------------------
     def _apply(self, s, ref: ProductRef, state: InventoryState, obs: Observation, ev: Evaluation,
-               prev_status: str, prev_seller: str | None, prev_success_at: datetime | None) -> Detection | None:
+               prev_status: str, prev_seller: str | None, prev_success_at: datetime | None,
+               reminders: list[int] | None = None) -> Detection | None:
         now = self.clock()
         state.consecutive_errors = 0
         state.last_error = None
@@ -239,7 +245,38 @@ class InventoryMonitor:
             state.recently_active_until = now + timedelta(minutes=self.settings.recently_active_window_minutes)
         elif state.episode_open and state.alert_state == AlertState.CONFIRMED.value:
             state.poll_mode = PollMode.AVAILABLE_HOLD.value
+            if ev.alertable and reminders is not None:
+                event_id = self._maybe_reminder(s, ref, state, obs, ev, now)
+                if event_id:
+                    reminders.append(event_id)
         return None
+
+    def _maybe_reminder(self, s, ref: ProductRef, state: InventoryState, obs: Observation, ev: Evaluation,
+                        now: datetime) -> int | None:
+        """Still in stock after the first alert: remind again, at most RESTOCK_REMINDER_MAX times."""
+        limit = self.settings.restock_reminder_max
+        sent = state.reminders_sent or 0
+        if limit <= 0 or sent >= limit:
+            return None
+        if state.last_alert_at and now - state.last_alert_at < timedelta(
+                minutes=self.settings.restock_reminder_minutes):
+            return None
+        state.reminders_sent = sent + 1
+        state.last_alert_at = now
+        store_key = ref.store_id or "online"
+        event = add_event(
+            s, EventType.RESTOCK_REMINDER, ref,
+            previous_status=ev.status.value, new_status=ev.status.value,
+            restock_episode=state.restock_episode,
+            dedupe_key=f"restock:{ref.id}:{store_key}:ep{state.restock_episode}:reminder{sent + 1}",
+            message=f"Still in stock: reminder {sent + 1} of {limit}",
+            is_simulation=self.is_simulation, detected_at=obs.checked_at,
+            details={"reminder": sent + 1, "reminder_max": limit, "seller_name": obs.seller_name,
+                     "price": obs.price, "quantity": obs.quantity,
+                     "product_url": self.retailers.get(ref.retailer).get_product_url(ref),
+                     "since": state.episode_started_at.isoformat() if state.episode_started_at else None},
+        )
+        return event.id
 
     @staticmethod
     def _set_observed(state: InventoryState, obs: Observation, ev: Evaluation, now: datetime,
@@ -323,6 +360,8 @@ class InventoryMonitor:
                 self._set_observed(state, last, last_ev, now, det.previous_status)
                 state.episode_open = True
                 state.alert_state = AlertState.CONFIRMED.value
+                state.last_alert_at = now
+                state.reminders_sent = 0
                 state.episode_started_at = det.observation.checked_at
                 state.poll_mode = PollMode.AVAILABLE_HOLD.value
                 store_key = ref.store_id or "online"

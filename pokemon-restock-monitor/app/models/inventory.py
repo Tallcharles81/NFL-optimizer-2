@@ -44,6 +44,9 @@ class InventoryState(Base):
     alert_state: Mapped[str] = mapped_column(String(30), default=AlertState.NONE.value)
     episode_started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     last_ignored_reason: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Repeat alerts while the item stays in stock
+    last_alert_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    reminders_sent: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 

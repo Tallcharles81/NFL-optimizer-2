@@ -232,3 +232,107 @@ async def test_robots_disallow_is_respected(settings):
     assert o.status == S.ERROR and o.error_kind == "NOT_PERMITTED"
     assert calls == ["/robots.txt"]  # the product page was never requested
     await mgr.aclose()
+
+
+# -- Target buy box (markup captured from a live rendered Target page, trimmed) --------
+from app.retailers.target import parse_target_buy_box  # noqa: E402
+
+TARGET_OOS = """<html><body>
+<div data-test="module-product-detail-price-v2"><span>New at</span><span data-test="product-price">$69.99</span>
+<span data-test="text-quill-insert-0">Out of Stock</span></div>
+<div data-module-type="ProductDetailAddToCart"><div data-test="module-product-detail-add-to-cart">
+<button type="button" aria-label="Add to cart Pokémon Trading Card Game: 30th Celebration Elite Trainer Box"
+ data-component-state="disabled" data-test="AddToCart.Disabled" disabled="" id="AddToCart.Disabled">
+ <span><span>Add to cart</span></span></button></div></div>
+<div data-module-type="ProductDetailFulfillmentMessaging"><div>Ship to 85032</div></div>
+<div data-test="global-recommended-products-adaptpdph1">
+<button aria-label="Add to cart for Pokemon Card Game Mega Brave Booster Pack" data-test="chooseOptionsButton">Add to cart</button>
+</div></body></html>"""
+
+TARGET_IN_STOCK = TARGET_OOS.replace('<span data-test="text-quill-insert-0">Out of Stock</span>', "").replace(
+    'data-component-state="disabled" data-test="AddToCart.Disabled" disabled="" id="AddToCart.Disabled"',
+    'data-test="AddToCart" id="AddToCart"')
+
+
+def test_target_buy_box_out_of_stock_ignores_recommendations():
+    offer = parse_target_buy_box(TARGET_OOS)
+    assert offer.status == S.OUT_OF_STOCK and offer.price == 69.99 and offer.seller_name == "Target"
+
+
+def test_target_buy_box_in_stock():
+    offer = parse_target_buy_box(TARGET_IN_STOCK)
+    assert offer.status == S.AVAILABLE and offer.price == 69.99
+
+
+def test_target_buy_box_third_party_seller():
+    html = TARGET_IN_STOCK.replace("Ship to 85032", "Sold and shipped by CardShop LLC. Learn more")
+    offer = parse_target_buy_box(html)
+    assert offer.seller_name == "CardShop LLC"
+
+
+def test_target_buy_box_preorder():
+    html = TARGET_IN_STOCK.replace("<span>Add to cart</span>", "<span>Preorder</span>").replace(
+        'aria-label="Add to cart', 'aria-label="Preorder')
+    assert parse_target_buy_box(html).status == S.PREORDER
+
+
+def test_target_page_without_buy_box_is_unknown():
+    assert parse_target_buy_box("<html><body>Something went wrong</body></html>") is None
+
+
+async def test_target_monitor_reads_buy_box(settings):
+    mgr = RetailerManager(settings, transport=_target_transport(TARGET_OOS))
+    o = await mgr.get("target").safe_check(ONLINE)
+    assert o.status == S.OUT_OF_STOCK and o.source == "target:product-page:buy-box"
+    assert o.seller_type == SellerType.FIRST_PARTY_RETAILER and o.price == 69.99
+    await mgr.aclose()
+    mgr = RetailerManager(settings, transport=_target_transport(
+        TARGET_IN_STOCK.replace("Ship to 85032", "Sold and shipped by CardShop LLC.")))
+    o = await mgr.get("target").safe_check(ONLINE)
+    assert o.status == S.AVAILABLE and o.seller_type == SellerType.THIRD_PARTY
+    assert not evaluate(o, ONLINE, settings).alertable
+    await mgr.aclose()
+
+
+# Trimmed from a live, in-stock Target Plus (marketplace) listing.
+TARGET_PLUS_IN_STOCK = """<html><body>
+<div data-test="module-product-detail-price-v2"><div data-test="price-cdui"><span data-test="text-quill-insert-0">$21.99</span></div>
+<button aria-label="More info about pricing" type="button"></button></div>
+<div data-module-type="ProductDetailAddToCart"><div data-test="module-product-detail-add-to-cart"><div class="h-display-flex">
+<button data-test="quantity-stepper" id="addToCartButtonOrTextIdFor1005452393" type="button">Add to cart</button></div></div></div>
+<div data-module-type="ProductDetailFulfillmentMessaging"><span>Final sale item</span>
+<a aria-label="Sold &amp; shipped by Collectors Emporium. View partner details" data-test="targetPlusExtraInfoSection"
+ href="/sp/collectors-emporium/-/N-10026644"><span>Sold &amp; shipped by </span><span>Collectors Emporium</span></a>
+<button type="button">Report this item</button></div></body></html>"""
+
+
+def test_target_plus_listing_is_third_party():
+    offer = parse_target_buy_box(TARGET_PLUS_IN_STOCK)
+    assert offer.status == S.AVAILABLE and offer.price == 21.99
+    assert offer.seller_name == "Collectors Emporium"
+
+
+def test_target_plus_seller_name_from_text_when_no_aria_label():
+    html = TARGET_PLUS_IN_STOCK.replace('aria-label="Sold &amp; shipped by Collectors Emporium. View partner details" ', "")
+    assert parse_target_buy_box(html).seller_name == "Collectors Emporium"
+
+
+async def test_target_plus_listing_does_not_alert(settings):
+    mgr = RetailerManager(settings, transport=_target_transport(TARGET_PLUS_IN_STOCK))
+    o = await mgr.get("target").safe_check(ONLINE)
+    assert o.status == S.AVAILABLE and o.seller_type == SellerType.THIRD_PARTY
+    ev = evaluate(o, ONLINE, settings)
+    assert not ev.alertable and ev.ignored_reason == "THIRD_PARTY"
+    await mgr.aclose()
+
+
+def test_partner_storefront_link_marks_third_party():
+    html = TARGET_PLUS_IN_STOCK.replace(' data-test="targetPlusExtraInfoSection"', "")
+    assert parse_target_buy_box(html).seller_name == "Collectors Emporium"
+
+
+def test_target_only_policy(settings):
+    strict = settings.model_copy(update={"accept_third_party": False, "accept_unknown_seller": False})
+    assert evaluate(obs(S.AVAILABLE, seller=SellerType.FIRST_PARTY_RETAILER), ONLINE, strict).alertable
+    assert not evaluate(obs(S.AVAILABLE, seller=SellerType.THIRD_PARTY), ONLINE, strict).alertable
+    assert not evaluate(obs(S.AVAILABLE, seller=SellerType.UNKNOWN), ONLINE, strict).alertable

@@ -7,7 +7,8 @@
 # Setup (repo Settings -> Secrets and variables -> Actions):
 #   Secrets:   DISCORD_WEBHOOK_URL and/or NTFY_TOPIC   (at least one)
 #              DISCORD_MENTION (optional, e.g. @here), CONTACT_EMAIL (optional)
-#   Variables: TARGET_USE_BROWSER = true  (optional; render pages with Chromium)
+#   TARGET_USE_BROWSER defaults to true (Target fills in stock status with
+#   JavaScript). Set it to false as a variable or secret to use plain requests.
 #
 # Scheduled workflows only run from the default branch. GitHub may start runs a
 # few minutes late when it is busy.
@@ -23,6 +24,14 @@ on:
         description: "Send a test notification instead of checking stock"
         type: boolean
         default: false
+      diagnose:
+        description: "Diagnostics: capture one Target product page (no stock check)"
+        type: boolean
+        default: false
+      diagnose_sku:
+        description: "TCIN to capture when diagnosing"
+        type: string
+        default: "1010892076"
 
 permissions:
   contents: write
@@ -44,9 +53,16 @@ jobs:
       DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL || 'unset@example.com' }}
-      TARGET_USE_BROWSER: ${{ vars.TARGET_USE_BROWSER || 'false' }}
+      TARGET_USE_BROWSER: ${{ vars.TARGET_USE_BROWSER || secrets.TARGET_USE_BROWSER || 'true' }}
       TIMEZONE: ${{ vars.TIMEZONE || 'America/New_York' }}
       NOTIFY_CONSOLE: "true"
+      # Only alert when Target itself sells the item: marketplace (Target Plus)
+      # sellers and listings whose seller can't be determined never alert.
+      ACCEPT_THIRD_PARTY: "false"
+      ACCEPT_UNKNOWN_SELLER: "false"
+      # Remind again while still in stock (each run is ~15 min apart)
+      RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
+      RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -76,8 +92,23 @@ jobs:
         if: inputs.test_notification
         run: python scripts/test_notifications.py
 
+      - name: Diagnose (capture one product page)
+        if: inputs.diagnose
+        run: |
+          python scripts/capture_page.py --retailer target --sku "${{ inputs.diagnose_sku || '1010892076' }}" --out diag || true
+          echo "===== SUMMARY ====="
+          cat diag/summary.txt || true
+
+      - name: Upload diagnostics
+        if: inputs.diagnose
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-page-diagnostics
+          path: pokemon-restock-monitor/diag/
+          retention-days: 3
+
       - name: Restore saved state
-        if: ${{ !inputs.test_notification }}
+        if: ${{ !inputs.test_notification && !inputs.diagnose }}
         run: |
           mkdir -p data
           if git fetch --depth=1 origin monitor-state 2>/dev/null; then
@@ -88,11 +119,11 @@ jobs:
           fi
 
       - name: Check stock
-        if: ${{ !inputs.test_notification }}
+        if: ${{ !inputs.test_notification && !inputs.diagnose }}
         run: python -m app.main --once --catalog catalog/target_30th_celebration.csv
 
       - name: Save state
-        if: ${{ always() && !inputs.test_notification && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
+        if: ${{ always() && !inputs.test_notification && !inputs.diagnose && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
