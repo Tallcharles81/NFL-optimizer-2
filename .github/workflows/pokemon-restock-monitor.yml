@@ -83,7 +83,10 @@ jobs:
 
       - name: Diagnose (capture one product page)
         if: inputs.diagnose
-        run: python scripts/capture_page.py --retailer target --sku 1010892076 --out diag
+        run: |
+          python scripts/capture_page.py --retailer target --sku 1010892076 --out diag || true
+          echo "===== SUMMARY ====="
+          cat diag/summary.txt || true
 
       - name: Upload diagnostics
         if: inputs.diagnose
