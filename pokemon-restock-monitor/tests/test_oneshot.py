@@ -76,3 +76,29 @@ async def test_ntfy_payload():
     assert body["actions"][0]["label"] == "OPEN PRODUCT"
     assert "DPCI (in store): 361-00-8095" in body["message"]
     await n.aclose()
+
+
+async def test_loop_mode_sweeps_repeatedly_and_alerts_once(harness):
+    harness.add("A")
+    harness.sim.set_status("A", S.OUT_OF_STOCK)
+    await run_once(harness.settings, runtime=harness.rt)
+    harness.sim.set_status("A", S.AVAILABLE)
+    summary = await run_once(harness.settings, runtime=harness.rt, loop_minutes=0.02, sweep_seconds=0.1)
+    assert summary["sweeps"] >= 3
+    assert sent(harness) == 1  # detected on the first sweep, not repeated on later sweeps
+
+
+async def test_loop_mode_catches_restock_mid_run(harness):
+    import asyncio
+
+    harness.add("A")
+    harness.sim.set_status("A", S.OUT_OF_STOCK)
+
+    async def restock_soon():
+        await asyncio.sleep(0.3)
+        harness.sim.set_status("A", S.AVAILABLE)
+
+    task = asyncio.create_task(restock_soon())
+    summary = await run_once(harness.settings, runtime=harness.rt, loop_minutes=0.02, sweep_seconds=0.1)
+    await task
+    assert summary["restocks"] == 1 and sent(harness) == 1

@@ -1,8 +1,10 @@
 # Pokémon restock monitor on GitHub Actions: no always-on computer needed.
 #
-# Every ~15 minutes: check each product in the catalog, verify any restock with
-# an independent re-check, and alert (Discord and/or ntfy phone push) once per
-# restock. State is kept on the `monitor-state` branch between runs.
+# A run starts every ~15 minutes and keeps re-checking every product about every
+# 75 seconds for 20 minutes, so runs overlap and there is always one checking or
+# queued (only one runs at a time). Any restock is verified with an independent
+# re-check, then alerted (Discord and/or ntfy phone push) once, plus reminders
+# while it stays in stock. State is kept on the `monitor-state` branch.
 #
 # Setup (repo Settings -> Secrets and variables -> Actions):
 #   Secrets:   DISCORD_WEBHOOK_URL and/or NTFY_TOPIC   (at least one)
@@ -28,6 +30,14 @@ on:
         description: "Diagnostics: capture one Target product page (no stock check)"
         type: boolean
         default: false
+      live_test_tcins:
+        description: "Live end-to-end test: comma-separated TCINs checked with a scratch database; alerts are labelled [SIMULATION]"
+        type: string
+        default: ""
+      live_test_minutes:
+        description: "With live_test_tcins: keep re-checking for this many minutes (0 = once)"
+        type: string
+        default: "0"
       diagnose_sku:
         description: "TCIN to capture when diagnosing"
         type: string
@@ -43,7 +53,7 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: pokemon-restock-monitor
@@ -107,8 +117,20 @@ jobs:
           path: pokemon-restock-monitor/diag/
           retention-days: 3
 
+      - name: Live end-to-end test (scratch database)
+        if: ${{ inputs.live_test_tcins != '' && inputs.live_test_tcins != null }}
+        env:
+          TCINS: ${{ inputs.live_test_tcins }}
+          DATABASE_URL: sqlite:////tmp/live-test.db
+        run: |
+          printf 'name,tcin\n' > /tmp/live-test.csv
+          for t in $(echo "$TCINS" | tr ',' ' '); do printf 'Live test item %s,%s\n' "$t" "$t" >> /tmp/live-test.csv; done
+          cat /tmp/live-test.csv
+          python -m app.main --once --test-run --catalog /tmp/live-test.csv \
+            --loop-minutes "${{ inputs.live_test_minutes || '0' }}" --sweep-seconds 75
+
       - name: Restore saved state
-        if: ${{ !inputs.test_notification && !inputs.diagnose }}
+        if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
         run: |
           mkdir -p data
           if git fetch --depth=1 origin monitor-state 2>/dev/null; then
@@ -119,11 +141,14 @@ jobs:
           fi
 
       - name: Check stock
-        if: ${{ !inputs.test_notification && !inputs.diagnose }}
-        run: python -m app.main --once --catalog catalog/target_30th_celebration.csv
+        if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
+        run: >-
+          python -m app.main --once --catalog catalog/target_30th_celebration.csv
+          --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
+          --sweep-seconds "${{ vars.SWEEP_SECONDS || '75' }}"
 
       - name: Save state
-        if: ${{ always() && !inputs.test_notification && !inputs.diagnose && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
+        if: ${{ always() && !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

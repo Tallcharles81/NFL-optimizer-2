@@ -151,7 +151,8 @@ class TargetMonitor(StructuredDataRetailerMonitor):
 
             # robots.txt is still honored before the browser loads anything
             await self.http.ensure_allowed(url)
-            return await fetch_rendered_page(url, self.limiter, self.settings)
+            return await fetch_rendered_page(url, self.limiter, self.settings,
+                                             ready_selectors=[*ADD_TO_CART_MODULES[:1], *PRICE_MODULES[:1]])
         return await super().fetch_page(url)
 
     def missing_markup_message(self) -> str:

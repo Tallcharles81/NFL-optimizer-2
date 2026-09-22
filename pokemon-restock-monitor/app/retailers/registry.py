@@ -87,3 +87,6 @@ class RetailerManager:
     async def aclose(self) -> None:
         for monitor in self._monitors.values():
             await monitor.aclose()
+        from app.retailers.browser import close_browser
+
+        await close_browser()

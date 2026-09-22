@@ -1,6 +1,6 @@
 """One-shot mode: check every product once, verify, alert, exit.
 
-    python -m app.main --once [--catalog catalog/target_30th_celebration.csv]
+    python -m app.main --once [--catalog catalog/target_30th_celebration.csv] [--loop-minutes 20]
 
 Built for schedulers such as GitHub Actions (no always-on computer needed).
 All state lives in the SQLite database, which the workflow saves between
@@ -14,7 +14,9 @@ never fails silently.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import random
 from collections import defaultdict
 from datetime import timedelta
 
@@ -32,8 +34,16 @@ logger = logging.getLogger("oneshot")
 KEEP_CHECK_HISTORY_DAYS = 14
 
 
-async def run_once(settings: Settings, catalog: str | None = None, runtime: Runtime | None = None) -> dict:
-    rt = runtime or build_runtime(settings)
+async def run_once(settings: Settings, catalog: str | None = None, runtime: Runtime | None = None,
+                   is_test: bool = False, loop_minutes: float = 0, sweep_seconds: float = 75,
+                   sleep=asyncio.sleep) -> dict:
+    """Check every product once -- or, with ``loop_minutes``, keep sweeping for that long.
+
+    A sweep checks all products; a new sweep starts every ``sweep_seconds`` (± 20 %),
+    or right away if a sweep took longer. ``is_test`` labels alerts [SIMULATION].
+    """
+    rt = runtime or build_runtime(settings, is_simulation=is_test)
+    summary = {"sweeps": 0, "checked": 0, "skipped": 0, "restocks": 0}
     try:
         if catalog:
             with rt.db.session() as s:
@@ -44,38 +54,22 @@ async def run_once(settings: Settings, catalog: str | None = None, runtime: Runt
                     log_event(logger, "catalog_error", logging.ERROR, error=err)
 
         await rt.monitor.recover()
-
-        now = utcnow()
-        with rt.db.session() as s:
-            rows = s.execute(
-                select(Product.id, Retailer.slug, InventoryState.consecutive_errors, InventoryState.next_check_at)
-                .join(Retailer, Retailer.id == Product.retailer_id)
-                .outerjoin(InventoryState, InventoryState.product_id == Product.id)
-                .where(Product.enabled.is_(True), Retailer.enabled.is_(True))
-                .order_by(Product.id)
-            ).all()
-
-        summary = {"checked": 0, "skipped": 0, "restocks": 0, "by_retailer": defaultdict(list)}
-        for pid, slug, errors, next_check in rows:
-            # Respect per-product error backoff across runs.
-            if errors and next_check and next_check > now:
-                summary["skipped"] += 1
-                continue
-            outcome = await rt.monitor.check_product(pid)
-            if outcome.skipped:
-                summary["skipped"] += 1
-                continue
-            summary["checked"] += 1
-            obs = outcome.observation
-            summary["by_retailer"][slug].append(obs)
-            if outcome.confirmed_event_id:
-                summary["restocks"] += 1
-
-        await _health_alerts(rt, summary["by_retailer"])
-        _prune(rt)
-        summary["by_retailer"] = {k: len(v) for k, v in summary["by_retailer"].items()}
-        log_event(logger, "run_complete", checked=summary["checked"], skipped=summary["skipped"],
-                  restocks=summary["restocks"])
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + loop_minutes * 60
+        rng = random.Random()
+        while True:
+            started = loop.time()
+            await _sweep(rt, summary)
+            summary["sweeps"] += 1
+            _prune(rt)
+            if loop_minutes <= 0:
+                break
+            wait = max(0.0, sweep_seconds * rng.uniform(0.8, 1.2) - (loop.time() - started))
+            if loop.time() + wait >= deadline:
+                break
+            await sleep(wait)
+        log_event(logger, "run_complete", sweeps=summary["sweeps"], checked=summary["checked"],
+                  skipped=summary["skipped"], restocks=summary["restocks"])
         return summary
     finally:
         if runtime is None:
@@ -83,6 +77,33 @@ async def run_once(settings: Settings, catalog: str | None = None, runtime: Runt
             # Closing the last connection checkpoints the WAL into restock.db, so the
             # workflow can save a single self-contained file even after a failure.
             rt.db.dispose()
+
+
+async def _sweep(rt: Runtime, summary: dict) -> None:
+    now = utcnow()
+    with rt.db.session() as s:
+        rows = s.execute(
+            select(Product.id, Retailer.slug, InventoryState.consecutive_errors, InventoryState.next_check_at)
+            .join(Retailer, Retailer.id == Product.retailer_id)
+            .outerjoin(InventoryState, InventoryState.product_id == Product.id)
+            .where(Product.enabled.is_(True), Retailer.enabled.is_(True))
+            .order_by(Product.id)
+        ).all()
+    by_retailer = defaultdict(list)
+    for pid, slug, errors, next_check in rows:
+        # Respect per-product error backoff across sweeps and runs.
+        if errors and next_check and next_check > now:
+            summary["skipped"] += 1
+            continue
+        outcome = await rt.monitor.check_product(pid)
+        if outcome.skipped:
+            summary["skipped"] += 1
+            continue
+        summary["checked"] += 1
+        by_retailer[slug].append(outcome.observation)
+        if outcome.confirmed_event_id:
+            summary["restocks"] += 1
+    await _health_alerts(rt, by_retailer)
 
 
 async def _health_alerts(rt: Runtime, by_retailer: dict) -> None:

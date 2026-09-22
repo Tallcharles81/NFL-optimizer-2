@@ -200,3 +200,33 @@ async def test_notification_service_builds_target_message(harness):
     msg = harness.alerts[0]
     assert msg.store == "Athens, TN (Athens Target)" and msg.extra["Max qty to buy"] == "2"
     assert msg.detected.endswith(("EDT", "EST"))
+
+
+def test_buy_with_google_link():
+    from urllib.parse import parse_qs, urlsplit
+
+    from app.services.notification_service import google_buy_link
+
+    link = google_buy_link("Pokémon TCG: 30th Celebration Elite Trainer Box", "1010892076")
+    parts = urlsplit(link)
+    assert parts.netloc == "www.google.com" and parse_qs(parts.query)["udm"] == ["50"]
+    assert "1010892076" in parse_qs(parts.query)["q"][0]
+
+
+async def test_ntfy_and_discord_show_both_buttons():
+    import json as _json
+
+    from app.notifications.ntfy import NtfyNotifier
+
+    msg = sample_message()
+    msg.links = [("BUY WITH GOOGLE", "https://www.google.com/search?udm=50&q=x")]
+    captured = []
+    n = NtfyNotifier("t", transport=httpx.MockTransport(
+        lambda r: captured.append(_json.loads(r.content)) or httpx.Response(200)))
+    await n.send(msg)
+    assert [a["label"] for a in captured[0]["actions"]] == ["OPEN PRODUCT", "BUY WITH GOOGLE"]
+    await n.aclose()
+    d = DiscordNotifier(WEBHOOK)
+    buttons = d.build_payload(msg, True)["components"][0]["components"]
+    assert [b["label"] for b in buttons] == ["OPEN PRODUCT", "BUY WITH GOOGLE"]
+    await d.aclose()
