@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="30">{% endblock %}
+{% block content %}
+{% if health.status != 'ok' %}
+<div class="banner bad">⚠️ Monitor status: <strong>{{ health.status|upper }}</strong>
+  {% if health.problems %} — {{ health.problems|join('; ') }}{% endif %}</div>
+{% else %}
+<div class="banner good">✅ Monitor healthy · scheduler {{ health.scheduler_status }} · last successful check {{ last_success|ago }}</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card stat"><div class="label">Products monitored</div><div class="value">{{ enabled_count }}</div><div class="sub">{{ products|length }} total</div></div>
+  <div class="card stat"><div class="label">Available now</div><div class="value" style="color:var(--ok)">{{ available|length }}</div><div class="sub">confirmed & alerted</div></div>
+  <div class="card stat"><div class="label">Restocks (24h)</div><div class="value">{{ restocks_24h }}</div><div class="sub">{{ false_pos_24h }} false positive(s) filtered</div></div>
+  <div class="card stat"><div class="label">Last successful check</div><div class="value" style="font-size:18px">{{ last_success|ago }}</div><div class="sub">{{ last_success|localtime }}</div></div>
+  <div class="card stat"><div class="label">Products with errors</div><div class="value" style="color:{{ 'var(--bad)' if erroring else 'inherit' }}">{{ erroring|length }}</div><div class="sub">in backoff</div></div>
+  <div class="card stat"><div class="label">Notifications</div><div class="value" style="font-size:16px">{{ notif.channels|join(', ') }}</div><div class="sub">last sent {{ last_notification|ago }}</div></div>
+</div>
+
+<h2>Alert speed</h2>
+<div class="grid">
+  <div class="card stat"><div class="label">Detection latency</div><div class="value" style="font-size:18px">{{ latency.average.detection_latency_ms|ms }}</div><div class="sub">avg; change → detected (when source reports change time)</div></div>
+  <div class="card stat"><div class="label">Detection window</div><div class="value" style="font-size:18px">{{ latency.average.detection_window_ms|ms }}</div><div class="sub">avg; upper bound = time since previous check</div></div>
+  <div class="card stat"><div class="label">Verification latency</div><div class="value" style="font-size:18px">{{ latency.average.verification_latency_ms|ms }}</div><div class="sub">avg; detected → verified</div></div>
+  <div class="card stat"><div class="label">Notification latency</div><div class="value" style="font-size:18px">{{ latency.average.notification_latency_ms|ms }}</div><div class="sub">avg; verified → sent</div></div>
+  <div class="card stat"><div class="label">Total alert latency</div><div class="value" style="font-size:18px">{{ latency.average.total_latency_ms|ms }}</div><div class="sub">avg over {{ latency.samples }} restock(s)</div></div>
+</div>
+
+{% if available %}
+<h2>Available now</h2>
+<div class="table-wrap"><table>
+<tr><th>Product</th><th>Retailer</th><th>Location</th><th>Status</th><th>Since</th><th></th></tr>
+{% for p in available %}
+<tr><td>{{ p.product_name }}<div class="small muted">SKU {{ p.sku }}</div></td><td>{{ p.retailer.name }}</td><td>{{ p.location_label }}</td>
+<td><span class="badge b-{{ p.state_row.status }}">{{ p.state_row.status }}</span></td><td>{{ p.state_row.episode_started_at|ago }}</td>
+<td>{% if p.product_url %}<a class="btn primary" href="{{ p.product_url }}" target="_blank" rel="noopener">OPEN PRODUCT</a>{% endif %}</td></tr>
+{% endfor %}
+</table></div>
+{% endif %}
+
+<h2>Recent restocks</h2>
+<div class="table-wrap"><table>
+<tr><th>Detected</th><th>Product</th><th>Location</th><th>Change</th><th>Verify</th><th>Notify</th><th>Total</th><th>Alert</th></tr>
+{% for e in recent_restocks %}
+{% set p = names.get(e.product_id) %}
+<tr><td>{{ e.detected_at|localtime }}<div class="small muted">{{ e.detected_at|ago }}</div></td>
+<td>{{ p.product_name if p else e.sku }}{% if e.is_simulation %} <span class="badge">SIM</span>{% endif %}</td>
+<td>{{ p.location_label if p else (e.store_id or 'Online') }}</td>
+<td class="small">{{ e.transition }}</td><td>{{ e.verification_latency_ms|ms }}</td><td>{{ e.notification_latency_ms|ms }}</td><td>{{ e.total_latency_ms|ms }}</td>
+<td>{% if e.notification_sent %}<span class="badge b-SENT">SENT</span>{% else %}<span class="badge b-FAILED">NOT SENT</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">No restocks recorded yet.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Retailer status</h2>
+<div class="table-wrap"><table>
+<tr><th>Retailer</th><th>Health</th><th>Products</th><th>Last success</th><th>Paused until</th><th>Last error</th></tr>
+{% for r in retailers %}
+<tr><td>{{ r.name }}</td><td><span class="badge b-{{ r.health }}">{{ r.health }}</span></td><td>{{ r.products }}</td>
+<td>{{ r.last_success_at|ago }}</td><td>{{ r.paused_until|localtime if r.paused_until else '—' }}</td><td class="small">{{ r.last_error or '—' }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">No retailers in use yet — add a product.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Recent errors</h2>
+<div class="table-wrap"><table>
+<tr><th>Time</th><th>Type</th><th>Retailer / SKU</th><th>Message</th></tr>
+{% for e in recent_errors %}
+<tr><td>{{ e.created_at|localtime }}</td><td><span class="badge b-{{ e.event_type }}">{{ e.event_type }}</span></td><td>{{ e.retailer or '' }} {{ e.sku or '' }}</td><td class="small">{{ e.message }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">No errors. 🎉</td></tr>{% endfor %}
+</table></div>
+
+<h2>Restock history (analytics)</h2>
+<div class="card">
+{% if not analytics.sufficient %}
+  <span class="muted">Collecting data: {{ analytics.episodes }} of {{ analytics.min_required }} confirmed restocks needed before historical patterns are shown. These are statistics about the past, not predictions.</span>
+{% else %}
+  <div class="small muted">Historical statistics from {{ analytics.episodes }} confirmed restocks — not predictions.</div>
+  <ul>
+    <li>Average days between restocks (same product/location): <strong>{{ analytics.avg_days_between_restocks or '—' }}</strong></li>
+    <li>Average time available before selling out: <strong>{{ analytics.avg_minutes_available or '—' }} min</strong></li>
+    <li>Most frequent restock locations: {% for k, v in analytics.top_stores %}{{ k }} ({{ v }}){% if not loop.last %}, {% endif %}{% endfor %}</li>
+    <li>Fastest sell-outs: {% for n, m in analytics.fastest_sellouts %}{{ n }} ({{ m }} min){% if not loop.last %}, {% endif %}{% endfor %}</li>
+    <li>Restocks by hour: {% for h, c in analytics.restocks_by_hour %}{{ h }}:00×{{ c }} {% endfor %}</li>
+    <li>Restocks by weekday: {% for d, c in analytics.restocks_by_weekday %}{{ d }} {{ c }}{% if not loop.last %} · {% endif %}{% endfor %}</li>
+  </ul>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Events{% endblock %}
+{% block content %}
+<h1>Events</h1>
+<form method="get" style="margin-bottom:12px;max-width:340px">
+  <select name="type" onchange="this.form.submit()">
+    <option value="">All event types</option>
+    {% for t in types %}<option value="{{ t }}" {{ 'selected' if t == selected }}>{{ t }}</option>{% endfor %}
+  </select>
+</form>
+<div class="table-wrap"><table>
+<tr><th>Time</th><th>Type</th><th>Retailer / SKU / Store</th><th>Transition</th><th>Episode</th><th>Latency (det / ver / notif / total)</th><th>Message</th></tr>
+{% for e in events %}
+<tr>
+  <td class="small">{{ e.created_at|localtime }}</td>
+  <td><span class="badge b-{{ e.event_type }}">{{ e.event_type }}</span>{% if e.is_simulation %} <span class="badge">SIM</span>{% endif %}
+      {% if e.event_type == 'RESTOCK_CONFIRMED' %}<div class="small">{{ 'notified' if e.notification_sent else 'NOT notified' }}</div>{% endif %}</td>
+  <td class="small">{{ e.retailer or '' }} {{ e.sku or '' }} {% if e.store_id %}#{{ e.store_id }}{% endif %}</td>
+  <td class="small">{% if e.previous_status or e.new_status %}{{ e.previous_status }} → {{ e.new_status }}{% endif %}</td>
+  <td>{{ e.restock_episode or '' }}</td>
+  <td class="small">{% if e.detected_at %}{{ e.detection_latency_ms|ms }} / {{ e.verification_latency_ms|ms }} / {{ e.notification_latency_ms|ms }} / {{ e.total_latency_ms|ms }}{% endif %}</td>
+  <td class="small">{{ e.message or '' }}</td>
+</tr>
+{% else %}<tr><td colspan="7" class="muted">No events.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Restock Monitor{% endblock %} · Pokémon Restock Monitor</title>
+{% block head %}{% endblock %}
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7385; --border:#e3e6ec;
+          --accent:#e3350d; --ok:#15803d; --warn:#b45309; --bad:#b91c1c; --info:#1d4ed8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --card:#1b1f27; --text:#e6e9ef; --muted:#9aa3b5; --border:#2c323d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--card); border-bottom:1px solid var(--border); padding:10px 20px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; }
+  header .brand { font-weight:700; color:var(--accent); }
+  nav a { color:var(--muted); text-decoration:none; margin-right:16px; font-weight:500; }
+  nav a.active, nav a:hover { color:var(--text); }
+  main { max-width:1250px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:22px; margin:4px 0 16px; } h2 { font-size:16px; margin:24px 0 10px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+  .stat .label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .stat .value { font-size:24px; font-weight:700; margin-top:4px; }
+  .stat .sub { color:var(--muted); font-size:12px; }
+  .table-wrap { overflow-x:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; font-weight:600; background:#e5e7eb; color:#374151; white-space:nowrap; }
+  .b-AVAILABLE,.b-OK,.b-ok,.b-RESTOCK_CONFIRMED,.b-CONFIRMED,.b-SENT,.b-running { background:#dcfce7; color:var(--ok); }
+  .b-LIMITED,.b-PREORDER,.b-DEGRADED,.b-degraded,.b-RATE_LIMITED,.b-RESTOCK_DETECTED,.b-PENDING_VERIFICATION,.b-INCONCLUSIVE,.b-VERIFICATION_INCONCLUSIVE { background:#fef3c7; color:var(--warn); }
+  .b-ERROR,.b-BLOCKED,.b-SUSPENDED,.b-down,.b-CHECK_ERROR,.b-RETAILER_BLOCKED,.b-RETAILER_SUSPENDED,.b-FAILED,.b-NOT_PERMITTED,.b-MONITOR_STALLED,.b-stalled,.b-stopped { background:#fee2e2; color:var(--bad); }
+  .b-OUT_OF_STOCK,.b-SOLD_OUT,.b-UNAVAILABLE,.b-FALSE_POSITIVE { background:#e0e7ff; color:#3730a3; }
+  .muted { color:var(--muted); } .small { font-size:12px; }
+  .banner { padding:12px 16px; border-radius:10px; margin-bottom:16px; font-weight:500; }
+  .banner.bad { background:#fee2e2; color:var(--bad); border:1px solid #fecaca; }
+  .banner.good { background:#dcfce7; color:var(--ok); border:1px solid #bbf7d0; }
+  .banner.info { background:#dbeafe; color:var(--info); border:1px solid #bfdbfe; }
+  form.inline { display:inline; }
+  button, .btn { background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 10px; cursor:pointer; font:inherit; font-size:12px; text-decoration:none; display:inline-block; }
+  button.primary, .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  input, select { font:inherit; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); width:100%; }
+  .form-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
+  .form-grid label { font-size:12px; color:var(--muted); display:block; }
+  a { color:var(--info); }
+  code { background:rgba(127,127,127,.12); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">⚡ Pokémon Restock Monitor</span>
+  <nav>
+    {% set p = request.url.path %}
+    <a href="/dashboard" class="{{ 'active' if p.startswith('/dashboard') }}">Dashboard</a>
+    <a href="/products" class="{{ 'active' if p.startswith('/products') }}">Products</a>
+    <a href="/retailers" class="{{ 'active' if p.startswith('/retailers') }}">Retailers</a>
+    <a href="/events" class="{{ 'active' if p.startswith('/events') }}">Events</a>
+    <a href="/settings" class="{{ 'active' if p.startswith('/settings') }}">Settings</a>
+    <a href="/health">Health (JSON)</a>
+  </nav>
+</header>
+<main>
+{% if msg %}<div class="banner info">{{ msg }}</div>{% endif %}
+{% if error %}<div class="banner bad">{{ error }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

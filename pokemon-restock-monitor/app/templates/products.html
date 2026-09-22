@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<h1>Products</h1>
+<div class="table-wrap"><table>
+<tr><th>Product</th><th>Retailer</th><th>Location</th><th>Status</th><th>Seller</th><th>Last check</th><th>Next check</th><th>Actions</th></tr>
+{% for p in products %}{% set st = p.state_row %}
+<tr>
+  <td>{% if p.product_url %}<a href="{{ p.product_url }}" target="_blank" rel="noopener">{{ p.product_name }}</a>{% else %}{{ p.product_name }}{% endif %}
+      <div class="small muted">SKU {{ p.sku }}{% if p.max_quantity %} · max qty {{ p.max_quantity }}{% endif %}{% if not p.enabled %} · <strong>disabled</strong>{% endif %}</div></td>
+  <td>{{ p.retailer.name }}</td>
+  <td>{{ p.location_label }}{% if p.store_id %}<div class="small muted">store #{{ p.store_id }}</div>{% endif %}</td>
+  <td>{% if st %}<span class="badge b-{{ st.status }}">{{ st.status }}</span>
+      {% if st.alert_state not in ('NONE',) %}<div class="small"><span class="badge b-{{ st.alert_state }}">{{ st.alert_state }}</span></div>{% endif %}
+      {% if st.consecutive_errors %}<div class="small" style="color:var(--bad)">{{ st.consecutive_errors }} error(s): {{ st.last_error_kind }}</div>{% endif %}
+      {% if st.message %}<div class="small muted" style="max-width:320px">{{ st.message }}</div>{% endif %}{% endif %}</td>
+  <td class="small">{{ st.seller_type if st else '' }}</td>
+  <td class="small">{{ st.last_checked_at|ago if st else 'never' }}</td>
+  <td class="small">{{ st.next_check_at|ago if st else '' }}<div class="muted">{{ st.poll_mode if st else '' }}</div></td>
+  <td style="white-space:nowrap">
+    <form class="inline" method="post" action="/products/{{ p.id }}/check"><button>Check</button></form>
+    <form class="inline" method="post" action="/products/{{ p.id }}/toggle"><button>{{ 'Disable' if p.enabled else 'Enable' }}</button></form>
+    <form class="inline" method="post" action="/products/{{ p.id }}/delete" onsubmit="return confirm('Delete this product and its history?')"><button>Delete</button></form>
+  </td>
+</tr>
+{% else %}<tr><td colspan="8" class="muted">No products yet. Add one below or with <code>python scripts/add_product.py</code>.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Add product</h2>
+<form class="card" method="post" action="/products">
+  <div class="form-grid">
+    <div><label>Retailer</label><select name="retailer">{% for slug, name in retailers %}<option value="{{ slug }}">{{ name }}</option>{% endfor %}</select></div>
+    <div><label>SKU (Target: TCIN)</label><input name="sku" required placeholder="1010892076"></div>
+    <div style="grid-column:span 2"><label>Product name</label><input name="product_name" required placeholder="Pokémon TCG: ... Elite Trainer Box"></div>
+    <div style="grid-column:span 2"><label>Product URL</label><input name="product_url" placeholder="https://www.target.com/p/-/A-1010892076"></div>
+    <div style="grid-column:span 2"><label>Image URL (optional)</label><input name="image_url"></div>
+    <div><label>Store ID (blank = online)</label><input name="store_id" list="store-ids"></div>
+    <div><label>Store name</label><input name="store_name" placeholder="Athens Target"></div>
+    <div><label>City</label><input name="city"></div>
+    <div><label>State</label><input name="state" placeholder="TN"></div>
+    <div><label>ZIP</label><input name="zip_code"></div>
+    <div><label>Max quantity</label><input name="max_quantity" type="number" min="1"></div>
+    <div><label>Enabled</label><select name="enabled"><option value="on">Yes</option><option value="off">No</option></select></div>
+  </div>
+  <datalist id="store-ids">{% for s in stores %}<option value="{{ s.store_id }}">{{ s.retailer.name }} · {{ s.label }}</option>{% endfor %}</datalist>
+  <p><button class="primary" type="submit">Add product</button></p>
+  <p class="small muted">Store-level monitoring only works for retailers with a permitted store-inventory source. Otherwise the product reports UNKNOWN — online stock is never shown as in-store stock.</p>
+</form>
+{% endblock %}
