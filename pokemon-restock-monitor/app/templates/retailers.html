@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Retailers{% endblock %}
+{% block content %}
+<h1>Retailers</h1>
+<div class="table-wrap"><table>
+<tr><th>Retailer</th><th>Integration</th><th>Health</th><th>Products</th><th>Limiter</th><th>Last success</th><th>Pause</th><th>Actions</th></tr>
+{% for r in retailers %}
+<tr>
+  <td><strong>{{ r.name }}</strong>{% if not r.enabled %}<div class="small" style="color:var(--bad)">disabled</div>{% endif %}</td>
+  <td class="small">{{ r.implementation_status }}<div class="muted">store-level: {{ 'yes' if r.supports_store_inventory else 'no' }}</div></td>
+  <td><span class="badge b-{{ r.health }}">{{ r.health }}</span>{% if r.consecutive_failures %}<div class="small">{{ r.consecutive_failures }} consecutive failures</div>{% endif %}</td>
+  <td>{{ r.products }}</td>
+  <td class="small">{% if r.limiter %}{{ r.limiter.total_requests }} req · min {{ r.limiter.min_interval_seconds }}s · {{ r.limiter.rate_limit_events }}×429{% else %}—{% endif %}</td>
+  <td class="small">{{ r.last_success_at|ago }}</td>
+  <td class="small">{% if r.paused_until %}until {{ r.paused_until|localtime }}<div>{{ r.pause_reason }}</div>{% elif r.health == 'NOT_PERMITTED' %}{{ r.pause_reason }}{% else %}—{% endif %}</td>
+  <td style="white-space:nowrap">
+    <form class="inline" method="post" action="/retailers/{{ r.slug }}/toggle"><button>{{ 'Disable' if r.enabled else 'Enable' }}</button></form>
+    {% if r.paused_until or r.health in ('BLOCKED','SUSPENDED','RATE_LIMITED') %}
+    <form class="inline" method="post" action="/retailers/{{ r.slug }}/resume" onsubmit="return confirm('Resume only after the cause is resolved. Continue?')"><button>Resume</button></form>{% endif %}
+  </td>
+</tr>
+{% endfor %}
+</table></div>
+
+<h2>Stores</h2>
+<div class="table-wrap"><table>
+<tr><th>Retailer</th><th>Store ID</th><th>Name</th><th>City</th><th>State</th><th>ZIP</th><th>Source</th></tr>
+{% for s in stores %}
+<tr><td>{{ s.retailer.name }}</td><td>{{ s.store_id }}</td><td>{{ s.name }}</td><td>{{ s.city or '' }}</td><td>{{ s.state or '' }}</td><td>{{ s.zip_code or '' }}</td><td class="small muted">{{ s.source }}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">No stores. Add them below or with TARGET_STORES in .env.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Add store</h2>
+<form class="card" method="post" action="/stores">
+  <div class="form-grid">
+    <div><label>Retailer</label><select name="retailer">{% for r in retailers %}{% if r.slug != 'simulated' %}<option value="{{ r.slug }}">{{ r.name }}</option>{% endif %}{% endfor %}</select></div>
+    <div><label>Store ID</label><input name="store_id" required></div>
+    <div><label>Name</label><input name="name" placeholder="Athens Target"></div>
+    <div><label>City</label><input name="city"></div>
+    <div><label>State</label><input name="state"></div>
+    <div><label>ZIP</label><input name="zip_code"></div>
+  </div>
+  <p><button class="primary">Save store</button></p>
+</form>
+{% endblock %}

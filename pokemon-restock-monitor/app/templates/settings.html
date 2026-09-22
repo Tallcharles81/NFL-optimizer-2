@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<p class="muted">Settings are read from environment variables / <code>.env</code> at startup. Secrets are masked. Edit <code>.env</code> and restart to change them.</p>
+
+<h2>Notifications</h2>
+<div class="card">
+  Active channels: <strong>{{ channels.channels|join(', ') }}</strong>
+  <ul class="small">{% for name, st in channels.channel_status.items() %}
+    <li>{{ name }}: last sent {{ st.last_sent_at or 'never (this run)' }}{% if st.last_error %} · <span style="color:var(--bad)">last error: {{ st.last_error }}</span>{% endif %}</li>{% endfor %}</ul>
+  <form method="post" action="/settings/test-notification"><button class="primary">Send test notification</button></form>
+</div>
+
+<h2>Configured stores</h2>
+<div class="table-wrap"><table>
+<tr><th>Retailer</th><th>Store</th><th>ID</th><th>Source</th></tr>
+{% for s in stores %}<tr><td>{{ s.retailer.name }}</td><td>{{ s.label }}</td><td>{{ s.store_id }}</td><td class="small muted">{{ s.source }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">None. Set TARGET_STORES in .env or add stores on the Retailers page.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Configuration</h2>
+<div class="table-wrap"><table>
+{% for k, v in settings.items() %}<tr><td><code>{{ k|upper }}</code></td><td>{{ v if v is not none else '' }}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Safety guarantees</h2>
+<div class="card small">
+  <ul>
+    <li>This system only monitors, verifies and alerts. It has <strong>no</strong> add-to-cart, checkout, or payment functionality — you buy manually.</li>
+    <li>It never bypasses CAPTCHAs, bot detection, queues or rate limits; a challenge or HTTP 403 pauses that retailer.</li>
+    <li>It honors robots.txt and Retry-After, identifies itself with an honest User-Agent, and uses no proxies or fingerprint spoofing.</li>
+  </ul>
+</div>
+{% endblock %}

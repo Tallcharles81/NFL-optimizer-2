@@ -1,0 +1,94 @@
+"""Enumerations shared across the application. Stored as strings in the DB."""
+
+from enum import StrEnum
+
+
+class InventoryStatus(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    OUT_OF_STOCK = "OUT_OF_STOCK"
+    AVAILABLE = "AVAILABLE"
+    LIMITED = "LIMITED"
+    PREORDER = "PREORDER"
+    UNAVAILABLE = "UNAVAILABLE"
+    ERROR = "ERROR"
+
+
+class AvailabilityScope(StrEnum):
+    ONLINE_AVAILABLE = "ONLINE_AVAILABLE"
+    ONLINE_UNAVAILABLE = "ONLINE_UNAVAILABLE"
+    STORE_AVAILABLE = "STORE_AVAILABLE"
+    STORE_UNAVAILABLE = "STORE_UNAVAILABLE"
+    UNKNOWN = "UNKNOWN"
+
+
+class SellerType(StrEnum):
+    FIRST_PARTY_RETAILER = "FIRST_PARTY_RETAILER"
+    THIRD_PARTY = "THIRD_PARTY"
+    UNKNOWN = "UNKNOWN"
+
+
+class PollMode(StrEnum):
+    NORMAL = "NORMAL"
+    RECENTLY_ACTIVE = "RECENTLY_ACTIVE"
+    ERROR = "ERROR"
+    AVAILABLE_HOLD = "AVAILABLE_HOLD"
+
+
+class AlertState(StrEnum):
+    NONE = "NONE"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
+    CONFIRMED = "CONFIRMED"
+    FALSE_POSITIVE = "FALSE_POSITIVE"
+    INCONCLUSIVE = "INCONCLUSIVE"
+    SUPPRESSED = "SUPPRESSED"
+
+
+class EventType(StrEnum):
+    STATUS_CHANGE = "STATUS_CHANGE"
+    RESTOCK_DETECTED = "RESTOCK_DETECTED"
+    RESTOCK_CONFIRMED = "RESTOCK_CONFIRMED"
+    FALSE_POSITIVE = "FALSE_POSITIVE"
+    VERIFICATION_INCONCLUSIVE = "VERIFICATION_INCONCLUSIVE"
+    SOLD_OUT = "SOLD_OUT"
+    THIRD_PARTY_IGNORED = "THIRD_PARTY_IGNORED"
+    STORE_DATA_UNAVAILABLE = "STORE_DATA_UNAVAILABLE"
+    CHECK_ERROR = "CHECK_ERROR"
+    RATE_LIMITED = "RATE_LIMITED"
+    RETAILER_BLOCKED = "RETAILER_BLOCKED"
+    RETAILER_SUSPENDED = "RETAILER_SUSPENDED"
+    MONITOR_STARTED = "MONITOR_STARTED"
+    MONITOR_RECOVERED = "MONITOR_RECOVERED"
+    MONITOR_STALLED = "MONITOR_STALLED"
+
+
+class VerificationOutcome(StrEnum):
+    CONFIRMED = "CONFIRMED"
+    FALSE_POSITIVE = "FALSE_POSITIVE"
+    INCONCLUSIVE = "INCONCLUSIVE"
+
+
+class NotificationStatus(StrEnum):
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+
+
+class RetailerHealth(StrEnum):
+    OK = "OK"
+    DEGRADED = "DEGRADED"
+    RATE_LIMITED = "RATE_LIMITED"
+    SUSPENDED = "SUSPENDED"  # circuit breaker open after repeated failures
+    BLOCKED = "BLOCKED"  # retailer served a CAPTCHA / bot challenge / 403 -- we stop
+    NOT_PERMITTED = "NOT_PERMITTED"  # robots.txt disallows the URL
+    DISABLED = "DISABLED"
+    IDLE = "IDLE"
+
+
+# Statuses that represent something a person could buy right now (subject to
+# the ALERT_ON_* settings).
+PURCHASABLE_STATUSES = frozenset(
+    {InventoryStatus.AVAILABLE, InventoryStatus.LIMITED, InventoryStatus.PREORDER}
+)
+# Statuses that tell us nothing about stock. Never treat them as OUT_OF_STOCK.
+INDETERMINATE_STATUSES = frozenset({InventoryStatus.UNKNOWN, InventoryStatus.ERROR})
