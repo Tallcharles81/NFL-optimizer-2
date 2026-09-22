@@ -84,6 +84,12 @@ def parse_target_buy_box(html: str) -> ParsedOffer | None:
     # Target Plus partner listings say "Sold & shipped by <partner>"; otherwise Target sells it.
     seller = "Target"
     partner = soup.select_one(TARGET_PLUS_SELECTOR)
+    if partner is None:
+        # Second signal: a link to a partner's storefront (/sp/<partner>) inside the buy box.
+        for module in (price_el, _first(soup, FULFILLMENT_MODULES), atc):
+            if module is not None and module.select_one('a[href^="/sp/"]') is not None:
+                partner = module.select_one('a[href^="/sp/"]')
+                break
     if partner is not None:
         m = SELLER_RE.search(partner.get("aria-label") or "") or SELLER_RE.search(partner.get_text(" ", strip=True))
         seller = m.group(1).strip() if m else "Target Plus partner"

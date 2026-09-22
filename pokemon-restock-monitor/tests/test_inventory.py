@@ -324,3 +324,15 @@ async def test_target_plus_listing_does_not_alert(settings):
     ev = evaluate(o, ONLINE, settings)
     assert not ev.alertable and ev.ignored_reason == "THIRD_PARTY"
     await mgr.aclose()
+
+
+def test_partner_storefront_link_marks_third_party():
+    html = TARGET_PLUS_IN_STOCK.replace(' data-test="targetPlusExtraInfoSection"', "")
+    assert parse_target_buy_box(html).seller_name == "Collectors Emporium"
+
+
+def test_target_only_policy(settings):
+    strict = settings.model_copy(update={"accept_third_party": False, "accept_unknown_seller": False})
+    assert evaluate(obs(S.AVAILABLE, seller=SellerType.FIRST_PARTY_RETAILER), ONLINE, strict).alertable
+    assert not evaluate(obs(S.AVAILABLE, seller=SellerType.THIRD_PARTY), ONLINE, strict).alertable
+    assert not evaluate(obs(S.AVAILABLE, seller=SellerType.UNKNOWN), ONLINE, strict).alertable

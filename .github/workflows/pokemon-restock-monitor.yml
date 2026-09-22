@@ -56,6 +56,10 @@ jobs:
       TARGET_USE_BROWSER: ${{ vars.TARGET_USE_BROWSER || secrets.TARGET_USE_BROWSER || 'true' }}
       TIMEZONE: ${{ vars.TIMEZONE || 'America/New_York' }}
       NOTIFY_CONSOLE: "true"
+      # Only alert when Target itself sells the item: marketplace (Target Plus)
+      # sellers and listings whose seller can't be determined never alert.
+      ACCEPT_THIRD_PARTY: "false"
+      ACCEPT_UNKNOWN_SELLER: "false"
     steps:
       - uses: actions/checkout@v4
 
