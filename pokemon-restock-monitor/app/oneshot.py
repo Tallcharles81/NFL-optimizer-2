@@ -32,8 +32,10 @@ logger = logging.getLogger("oneshot")
 KEEP_CHECK_HISTORY_DAYS = 14
 
 
-async def run_once(settings: Settings, catalog: str | None = None, runtime: Runtime | None = None) -> dict:
-    rt = runtime or build_runtime(settings)
+async def run_once(settings: Settings, catalog: str | None = None, runtime: Runtime | None = None,
+                   is_test: bool = False) -> dict:
+    """``is_test`` labels every alert [SIMULATION] (for live end-to-end tests)."""
+    rt = runtime or build_runtime(settings, is_simulation=is_test)
     try:
         if catalog:
             with rt.db.session() as s:

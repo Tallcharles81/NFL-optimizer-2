@@ -67,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--init-db", action="store_true", help="create database tables and exit")
     parser.add_argument("--once", action="store_true", help="check every product once, alert, and exit")
     parser.add_argument("--catalog", help="with --once: CSV of products to import first (idempotent)")
+    parser.add_argument("--test-run", action="store_true",
+                        help="with --once: label alerts [SIMULATION] (use with a scratch DATABASE_URL)")
     parser.add_argument("--host")
     parser.add_argument("--port", type=int)
     args = parser.parse_args(argv)
@@ -84,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.once:
         from app.oneshot import run_once
 
-        asyncio.run(run_once(settings, catalog=args.catalog))
+        asyncio.run(run_once(settings, catalog=args.catalog, is_test=args.test_run))
         return 0
 
     if args.init_db:
