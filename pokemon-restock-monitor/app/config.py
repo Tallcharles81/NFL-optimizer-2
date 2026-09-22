@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     # Repeat the alert while the item stays in stock (0 = no reminders).
     restock_reminder_minutes: float = 10
     restock_reminder_max: int = 6
+    # Add a "BUY WITH GOOGLE" button to Target alerts. It opens Google AI Mode asking to buy
+    # the item, where Google's approved shopping agent can check out after you confirm.
+    buy_with_google_button: bool = True
 
     # --- Notifications -------------------------------------------------------
     notify_console: bool = True

@@ -35,6 +35,7 @@ class EmailNotifier(Notifier):
         )
         button = (f"<p><a href='{html.escape(msg.url)}' style='background:#e3350d;color:#fff;padding:10px 16px;"
                   f"border-radius:6px;text-decoration:none'>OPEN PRODUCT</a></p>") if msg.url else ""
+        button += "".join(f"<p><a href='{html.escape(link)}'>{html.escape(label)}</a></p>" for label, link in msg.links)
         body = f"<h2>{html.escape(prefix + msg.title)}</h2>"
         if msg.text:
             body += f"<p>{html.escape(msg.text)}</p>"

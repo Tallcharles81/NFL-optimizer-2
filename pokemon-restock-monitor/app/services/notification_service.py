@@ -12,6 +12,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -28,6 +29,16 @@ from app.utils.logging import log_event
 from app.utils.retry import retry_async
 
 logger = logging.getLogger("notifications")
+
+def google_buy_link(product_name: str, tcin: str) -> str:
+    """Google AI Mode, pre-asked to buy this exact Target item.
+
+    Target's authorized agent purchases run through Google (AI Mode / Gemini);
+    Google asks you to confirm before it buys anything.
+    """
+    query = f"Buy {product_name} (Target TCIN {tcin}) from Target.com for me"
+    return "https://www.google.com/search?" + urlencode({"q": query, "udm": "50"})
+
 
 # A PENDING claim older than this is assumed to belong to a crashed process.
 STALE_CLAIM_SECONDS = 60
@@ -106,8 +117,12 @@ class NotificationService:
             p for p in (product.city, product.state) if p) or product.store_name or product.store_id
         if product.store_id and product.store_name:
             store = f"{store} ({product.store_name})"
+        links = []
+        if self.settings.buy_with_google_button and product.retailer.slug == "target":
+            links.append(("BUY WITH GOOGLE", google_buy_link(product.product_name, product.sku)))
         return AlertMessage(
             kind="restock",
+            links=links,
             title=title,
             product_name=product.product_name,
             retailer=display,

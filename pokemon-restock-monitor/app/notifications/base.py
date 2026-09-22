@@ -28,6 +28,8 @@ class AlertMessage:
     extra: dict[str, str] = field(default_factory=dict)
     text: str | None = None
     is_simulation: bool = False
+    # Additional link buttons shown after OPEN PRODUCT, as (label, url).
+    links: list[tuple[str, str]] = field(default_factory=list)
 
     def core_fields(self) -> list[tuple[str, str]]:
         pairs = [
@@ -48,6 +50,8 @@ class AlertMessage:
             lines += [f"{label}:", str(value), ""]
         if self.url:
             lines += ["OPEN PRODUCT:", self.url]
+        for label, link in self.links:
+            lines += ["", f"{label}:", link]
         return "\n".join(lines).rstrip()
 
 

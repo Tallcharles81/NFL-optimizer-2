@@ -22,7 +22,8 @@ class TelegramNotifier(Notifier):
             text = "[SIMULATION]\n" + text
         payload = {"chat_id": self.chat_id, "text": text[:4000], "disable_web_page_preview": False}
         if msg.url:
-            payload["reply_markup"] = {"inline_keyboard": [[{"text": "OPEN PRODUCT", "url": msg.url}]]}
+            payload["reply_markup"] = {"inline_keyboard": [[{"text": "OPEN PRODUCT", "url": msg.url}]]
+                                       + [[{"text": label, "url": link}] for label, link in msg.links]}
         return payload
 
     async def send(self, message: AlertMessage) -> None:

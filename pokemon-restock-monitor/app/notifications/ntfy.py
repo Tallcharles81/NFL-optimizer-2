@@ -37,6 +37,8 @@ class NtfyNotifier(Notifier):
         if msg.url:
             payload["click"] = msg.url
             payload["actions"] = [{"action": "view", "label": "OPEN PRODUCT", "url": msg.url, "clear": True}]
+            payload["actions"] += [{"action": "view", "label": label, "url": link}
+                                   for label, link in msg.links[:2]]
         return payload
 
     async def send(self, message: AlertMessage) -> None:

@@ -51,6 +51,8 @@ class DiscordNotifier(Notifier):
         if msg.url:
             embed["url"] = msg.url
             description.append(f"**[OPEN PRODUCT]({msg.url})**")
+        for label, link in msg.links:
+            description.append(f"[{label}]({link})")
         if description:
             embed["description"] = "\n\n".join(description)[:4000]
         if msg.image_url:
@@ -66,7 +68,8 @@ class DiscordNotifier(Notifier):
         if with_components and msg.url:
             payload["components"] = [{
                 "type": 1,
-                "components": [{"type": 2, "style": 5, "label": "OPEN PRODUCT", "url": msg.url}],
+                "components": [{"type": 2, "style": 5, "label": "OPEN PRODUCT", "url": msg.url}]
+                + [{"type": 2, "style": 5, "label": label[:80], "url": link} for label, link in msg.links[:4]],
             }]
         return payload
 
