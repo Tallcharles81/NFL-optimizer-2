@@ -47,6 +47,18 @@ async def main() -> int:
     url = retailer.get_product_url(ref)
     lines = [f"url: {url}", f"browser: {settings.target_use_browser}"]
     try:
+        # Show what robots.txt says for this page (the monitor honors it on every check).
+        await retailer.http.ensure_allowed(url)
+        lines.append("robots.txt: allowed")
+    except Exception as exc:  # noqa: BLE001
+        lines.append(f"robots.txt: {type(exc).__name__}: {exc}")
+    robots = mgr.get(args.retailer).http._robots
+    for origin, (_, parser) in robots.items():
+        rules = [str(e).replace("\n", " ; ")[:3000] for e in (getattr(parser, "entries", []) or [])[:3]]
+        default = getattr(parser, "default_entry", None)
+        lines.append(f"robots {origin}: default entry: {str(default).replace(chr(10), ' ; ')[:3000]}")
+        lines += [f"robots {origin} entry: {r}" for r in rules]
+    try:
         page = await retailer.fetch_page(url)
     except Exception as exc:  # noqa: BLE001
         lines.append(f"FETCH FAILED: {type(exc).__name__}: {exc}")
@@ -66,6 +78,31 @@ async def main() -> int:
     for i, s in enumerate(ld):
         raw = (s.string or s.get_text() or "")[:1500]
         lines.append(f"--- json-ld {i}: {raw}")
+    next_data = soup.find("script", id="__NEXT_DATA__")
+    if next_data is not None:
+        # Walmart: the product data the page is built from.
+        try:
+            data = json.loads(next_data.get_text() or "{}")
+        except json.JSONDecodeError:
+            data = {}
+        wanted = {"usItemId", "upc", "name", "availabilityStatus", "sellerName", "sellerDisplayName",
+                  "sellerId", "sellerType", "offerType", "isWalmartSold", "fulfillmentType",
+                  "shippingOption", "canAddToCart", "buyBoxSuppression", "currentPrice", "priceString",
+                  "offerId", "maxOrderQuantity", "orderLimit"}
+        seen: dict[str, int] = {}
+
+        def walk(node, path=""):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    if k in wanted and not isinstance(v, (dict, list)) and seen.get(k, 0) < 4:
+                        seen[k] = seen.get(k, 0) + 1
+                        lines.append(f"[next_data] {path}.{k} = {v!r}"[:300])
+                    walk(v, f"{path}.{k}")
+            elif isinstance(node, list):
+                for i, v in enumerate(node[:30]):
+                    walk(v, f"{path}[{i}]")
+
+        walk(data)
     parsed = parse_product_page(html)
     lines.append(f"structured parse: found={parsed.found} offers={[(o.status.value, o.seller_name) for o in parsed.offers]}")
     for tag in soup.find_all("script", id=True):
@@ -88,6 +125,12 @@ async def main() -> int:
         el = soup.select_one(sel)
         lines.append(f"=== {sel} ===")
         lines.append(str(el)[:3500] if el else "(not found)")
+    if args.retailer == "walmart":
+        from app.retailers.walmart import page_upc, parse_walmart_page
+
+        summary = f"WALMART RESULT: item={args.sku} upc={page_upc(html)} offer={parse_walmart_page(html)}"
+        lines.insert(0, summary)
+        print(summary)
     try:
         from app.retailers.target import parse_target_buy_box
 

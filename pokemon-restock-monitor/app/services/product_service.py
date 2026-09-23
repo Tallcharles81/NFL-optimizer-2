@@ -182,7 +182,10 @@ def validation_warnings(data: ProductCreate) -> list[str]:
                 f"Target SKUs are numeric TCINs (e.g. 1010892076). {data.sku!r} doesn't look like one"
                 + (f"; the URL contains TCIN {from_url}" if from_url else "")
             )
-    elif cls is not SimulatedRetailer and not data.product_url:
+    elif data.retailer == "walmart" and not data.product_url and not data.sku.isdigit():
+        warnings.append(f"Walmart SKUs are numeric item IDs (the number at the end of the /ip/ URL); "
+                        f"{data.sku!r} doesn't look like one.")
+    elif cls is not SimulatedRetailer and data.retailer != "walmart" and not data.product_url:
         warnings.append(f"{cls.display_name} needs a full product URL to be checked.")
     if data.store_id and not cls.supports_store_inventory:
         warnings.append(
@@ -269,6 +272,9 @@ def import_catalog(session: Session, path: str, retailer: str = "target", max_qu
                    locations: list[dict] | None = None, enabled: bool = True) -> dict:
     """Idempotently import products from a CSV (name,tcin[,upc,dpci,url,max_quantity]).
 
+    Non-Target rows use ``sku`` or ``item_id`` instead of ``tcin`` and may set a
+    ``retailer`` column (default: the ``retailer`` argument).
+
     Returns {"added": [...], "existing": n, "errors": [...]}.
     """
     import csv
@@ -278,14 +284,14 @@ def import_catalog(session: Session, path: str, retailer: str = "target", max_qu
         rows = list(csv.DictReader(f))
     for raw in rows:
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
-        sku = row.get("tcin") or row.get("sku")
+        sku = row.get("tcin") or row.get("sku") or row.get("item_id")
         if not sku:
-            result["errors"].append(f"{row.get('name')}: no TCIN")
+            result["errors"].append(f"{row.get('name')}: no TCIN / item ID")
             continue
         mq = row.get("max_quantity") or max_quantity
         for loc in locations or [{}]:
             try:
-                data = ProductCreate(retailer=retailer, sku=sku, product_name=row.get("name") or sku,
+                data = ProductCreate(retailer=row.get("retailer") or retailer, sku=sku, product_name=row.get("name") or sku,
                                      product_url=row.get("url") or None, upc=row.get("upc") or None,
                                      dpci=row.get("dpci") or None, max_quantity=int(mq) if mq else None,
                                      enabled=enabled, **loc)

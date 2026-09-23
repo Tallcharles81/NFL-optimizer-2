@@ -115,3 +115,37 @@ async def test_concurrent_sweep_checks_all_and_alerts_once_each(harness):
     assert summary["checked"] == 4 and summary["restocks"] == 2
     await run_once(harness.settings, runtime=harness.rt, concurrency=3)
     assert sent(harness) == 2
+
+
+async def test_checks_per_sweep_rotates_least_recently_checked(make_harness):
+    from app.models import InventoryState
+
+    h = make_harness(checks_per_sweep="simulated=1")
+    ids = [h.add(sku) for sku in ("A", "B", "C")]
+    for sku in ("A", "B", "C"):
+        h.sim.set_status(sku, S.OUT_OF_STOCK)
+
+    def checked():
+        with h.rt.db.session() as s:
+            return {st.product_id for st in s.scalars(select(InventoryState))
+                    if st.last_checked_at is not None}
+
+    summary = await run_once(h.settings, runtime=h.rt)
+    assert summary["checked"] == 1 and summary["skipped"] == 2 and len(checked()) == 1
+    await run_once(h.settings, runtime=h.rt)
+    await run_once(h.settings, runtime=h.rt)
+    assert checked() == set(ids)
+
+
+def test_checks_per_sweep_setting(settings):
+    assert settings.checks_per_sweep_limits() == {"walmart": 1}
+    assert settings.model_copy(update={"checks_per_sweep": ""}).checks_per_sweep_limits() == {}
+
+
+async def test_walmart_catalog_imports(harness):
+    from app.services.product_service import import_catalog
+
+    with harness.rt.db.session() as s:
+        result = import_catalog(s, str(CATALOG.parent / "walmart_30th_celebration.csv"))
+        assert result["errors"] == [] and len(result["added"]) == 5
+        assert {p.retailer.slug for p in result["added"]} == {"walmart"}

@@ -34,22 +34,22 @@ logger = logging.getLogger("oneshot")
 KEEP_CHECK_HISTORY_DAYS = 14
 
 
-async def run_once(settings: Settings, catalog: str | None = None, runtime: Runtime | None = None,
+async def run_once(settings: Settings, catalog: str | list[str] | None = None, runtime: Runtime | None = None,
                    is_test: bool = False, loop_minutes: float = 0, sweep_seconds: float = 75,
                    concurrency: int = 1, sleep=asyncio.sleep) -> dict:
     """Check every product once -- or, with ``loop_minutes``, keep sweeping for that long.
 
     A sweep checks all products; a new sweep starts every ``sweep_seconds`` (± 20 %),
-    or right away if a sweep took longer. ``concurrency`` products are checked at once
-    (the retailer's rate limiter still spaces request starts). ``is_test`` labels
+    or right away if a sweep took longer. ``concurrency`` products per retailer are checked
+    at once (each retailer's rate limiter still spaces request starts). ``is_test`` labels
     alerts [SIMULATION].
     """
     rt = runtime or build_runtime(settings, is_simulation=is_test)
     summary = {"sweeps": 0, "checked": 0, "skipped": 0, "restocks": 0}
     try:
-        if catalog:
+        for path in ([catalog] if isinstance(catalog, str) else catalog or []):
             with rt.db.session() as s:
-                result = import_catalog(s, catalog)
+                result = import_catalog(s, path)
                 for p in result["added"]:
                     log_event(logger, "product_imported", sku=p.sku, name=p.product_name)
                 for err in result["errors"]:
@@ -85,17 +85,20 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
     now = utcnow()
     with rt.db.session() as s:
         rows = s.execute(
-            select(Product.id, Retailer.slug, InventoryState.consecutive_errors, InventoryState.next_check_at)
+            select(Product.id, Retailer.slug, InventoryState.consecutive_errors, InventoryState.next_check_at,
+                   InventoryState.last_checked_at)
             .join(Retailer, Retailer.id == Product.retailer_id)
             .outerjoin(InventoryState, InventoryState.product_id == Product.id)
             .where(Product.enabled.is_(True), Retailer.enabled.is_(True))
             .order_by(Product.id)
         ).all()
+    rows = _limit_per_retailer(rows, rt.settings.checks_per_sweep_limits(), summary)
     by_retailer = defaultdict(list)
-    sem = asyncio.Semaphore(max(1, concurrency))
+    # Each retailer gets its own slots, so a slow retailer never holds up another.
+    sems = defaultdict(lambda: asyncio.Semaphore(max(1, concurrency)))
 
     async def check(pid: int, slug: str) -> None:
-        async with sem:
+        async with sems[slug]:
             outcome = await rt.monitor.check_product(pid)
         if outcome.skipped:
             summary["skipped"] += 1
@@ -106,7 +109,7 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
             summary["restocks"] += 1
 
     tasks = []
-    for pid, slug, errors, next_check in rows:
+    for pid, slug, errors, next_check, _last in rows:
         # Respect per-product error backoff across sweeps and runs.
         if errors and next_check and next_check > now:
             summary["skipped"] += 1
@@ -114,6 +117,23 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
         tasks.append(check(pid, slug))
     await asyncio.gather(*tasks)
     await _health_alerts(rt, by_retailer)
+
+
+def _limit_per_retailer(rows, limits: dict[str, int], summary: dict) -> list:
+    """Keep at most ``limits[slug]`` products per limited retailer: the least recently checked."""
+    if not limits:
+        return list(rows)
+    oldest_first = sorted(rows, key=lambda r: (r[4] is not None, r[4] or 0, r[0]))
+    taken: dict[str, int] = defaultdict(int)
+    keep = set()
+    for row in oldest_first:
+        slug = row[1]
+        if slug in limits and taken[slug] >= limits[slug]:
+            continue
+        taken[slug] += 1
+        keep.add(row[0])
+    summary["skipped"] += len(rows) - len(keep)
+    return [r for r in rows if r[0] in keep]
 
 
 async def _health_alerts(rt: Runtime, by_retailer: dict) -> None:
