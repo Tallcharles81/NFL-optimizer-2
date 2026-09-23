@@ -54,8 +54,8 @@ async def test_catalog_import_is_idempotent(harness):
     with harness.rt.db.session() as s:
         first = import_catalog(s, str(CATALOG))
         second = import_catalog(s, str(CATALOG))
-    assert len(first["added"]) == 6 and first["errors"] == []
-    assert second["added"] == [] and second["existing"] == 6
+    assert len(first["added"]) == 8 and first["errors"] == []
+    assert second["added"] == [] and second["existing"] == 8
     with harness.rt.db.session() as s:
         etb = s.scalar(select(Product).where(Product.sku == "1010892076"))
     assert etb.dpci == "361-00-8095" and etb.upc == "196214158801"
@@ -147,7 +147,7 @@ async def test_walmart_catalog_imports(harness):
 
     with harness.rt.db.session() as s:
         result = import_catalog(s, str(CATALOG.parent / "walmart_30th_celebration.csv"))
-        assert result["errors"] == [] and len(result["added"]) == 2
+        assert result["errors"] == [] and len(result["added"]) == 4
         assert {p.retailer.slug for p in result["added"]} == {"walmart"}
 
 
