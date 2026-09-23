@@ -46,6 +46,7 @@ CHALLENGE_MARKERS = (
     "h-captcha",
     "are you a robot",
     "are you a human",
+    "robot or human?",
     "unusual traffic from your computer",
     "access to this page has been denied",
     "request unsuccessful. incapsula",
@@ -176,7 +177,9 @@ class PoliteHttpClient:
         if status in RETRYABLE_STATUS:
             raise RetryableError(f"HTTP {status}")
         text = resp.text
-        if status == 403 or (status == 200 and looks_like_challenge(text)):
+        # Some retailers (e.g. Walmart) redirect to a /blocked page instead of returning 403.
+        blocked_redirect = urlsplit(str(resp.url)).path.startswith("/blocked")
+        if status == 403 or blocked_redirect or (status == 200 and looks_like_challenge(text)):
             reason = f"HTTP {status}: retailer denied access or served a bot challenge"
             self.limiter.record_blocked(reason)
             log_event(logger, "bot_challenge_or_forbidden", logging.ERROR, retailer=self.retailer,
