@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     alert_on_preorder: bool = False
     alert_on_unknown_to_available: bool = True
     pending_notification_max_age_minutes: float = 15
+    # Alert on the first sighting of a restock, before the double-check (seconds faster).
+    # If the double-check then fails, a short "false alarm" note follows.
+    fast_alert: bool = False
     # Repeat the alert while the item stays in stock (0 = no reminders).
     restock_reminder_minutes: float = 10
     restock_reminder_max: int = 6
