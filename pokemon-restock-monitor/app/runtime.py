@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.config import Settings
 from app.database import Database
@@ -24,6 +24,8 @@ class Runtime:
     notifications: NotificationService
     monitor: InventoryMonitor
     scheduler: MonitorScheduler
+    # One-shot mode: consecutive rounds per retailer that returned no stock status.
+    unreadable_streak: dict[str, int] = field(default_factory=dict)
 
     async def aclose(self) -> None:
         await self.scheduler.shutdown()
