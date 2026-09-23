@@ -38,6 +38,10 @@ on:
         description: "Live end-to-end test: comma-separated TCINs checked with a scratch database; alerts are labelled [SIMULATION]"
         type: string
         default: ""
+      live_test_retailer:
+        description: "With live_test_tcins: retailer of those IDs (target or walmart)"
+        type: string
+        default: "target"
       live_test_minutes:
         description: "With live_test_tcins: keep re-checking for this many minutes (0 = once)"
         type: string
@@ -77,8 +81,8 @@ jobs:
       TARGET_USE_BROWSER: ${{ vars.TARGET_USE_BROWSER || secrets.TARGET_USE_BROWSER || 'true' }}
       TIMEZONE: ${{ vars.TIMEZONE || 'America/New_York' }}
       NOTIFY_CONSOLE: "true"
-      # Only alert when Target itself sells the item: marketplace (Target Plus)
-      # sellers and listings whose seller can't be determined never alert.
+      # Only alert when Target / Walmart itself sells the item: marketplace sellers
+      # (Target Plus, Walmart Marketplace) and unknown sellers never alert.
       ACCEPT_THIRD_PARTY: "false"
       ACCEPT_UNKNOWN_SELLER: "false"
       # Remind again while still in stock (each run is ~15 min apart)
@@ -86,6 +90,8 @@ jobs:
       VERIFICATION_DELAY_SECONDS: ${{ vars.VERIFICATION_DELAY_SECONDS || '2' }}
       RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
       RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
+      # Walmart blocks fast checking: one Walmart product per sweep, taking turns.
+      CHECKS_PER_SWEEP: ${{ vars.CHECKS_PER_SWEEP || 'walmart=1' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -124,7 +130,10 @@ jobs:
           for sku in $(echo "$SKUS" | tr ',' ' '); do
             python scripts/capture_page.py --retailer "$RETAILER" --sku "$sku" --out "diag/$sku" > /dev/null || true
             echo "===== SUMMARY $RETAILER $sku ====="
-            cat "diag/$sku/summary.txt" || true
+            head -c 20000 "diag/$sku/summary.txt" || true
+            echo
+            # Walmart blocks quick bursts of page loads; space them out.
+            if [ "$RETAILER" = "walmart" ]; then sleep 30; fi
           done
 
       - name: Upload diagnostics
@@ -139,10 +148,11 @@ jobs:
         if: ${{ inputs.live_test_tcins != '' && inputs.live_test_tcins != null }}
         env:
           TCINS: ${{ inputs.live_test_tcins }}
+          RETAILER: ${{ inputs.live_test_retailer || 'target' }}
           DATABASE_URL: sqlite:////tmp/live-test.db
         run: |
-          printf 'name,tcin\n' > /tmp/live-test.csv
-          for t in $(echo "$TCINS" | tr ',' ' '); do printf 'Live test item %s,%s\n' "$t" "$t" >> /tmp/live-test.csv; done
+          printf 'name,retailer,sku\n' > /tmp/live-test.csv
+          for t in $(echo "$TCINS" | tr ',' ' '); do printf 'Live test item %s,%s,%s\n' "$t" "$RETAILER" "$t" >> /tmp/live-test.csv; done
           cat /tmp/live-test.csv
           python -m app.main --once --test-run --catalog /tmp/live-test.csv \
             --loop-minutes "${{ inputs.live_test_minutes || '0' }}" --sweep-seconds 45 --concurrency 3
@@ -162,6 +172,7 @@ jobs:
         if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
         run: >-
           python -m app.main --once --catalog catalog/target_30th_celebration.csv
+          --catalog catalog/walmart_30th_celebration.csv
           --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
           --sweep-seconds "${{ vars.SWEEP_SECONDS || '45' }}"
           --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"

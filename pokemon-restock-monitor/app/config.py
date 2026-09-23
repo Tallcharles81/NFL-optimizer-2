@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     error_backoff_max_seconds: float = 3600
     stall_alert_minutes: float = 30
 
+    # Retailers that only tolerate a gentle pace: at most N product checks per sweep,
+    # least recently checked first. Format: "walmart=1;other=2".
+    checks_per_sweep: str = "walmart=1"
+
     # --- Rate limiting / HTTP -------------------------------------------------
     min_request_interval_seconds: float = 5
     max_retries: int = 3
@@ -144,6 +148,15 @@ class Settings(BaseSettings):
         if v not in {"console", "json"}:
             raise ValueError("LOG_FORMAT must be 'console' or 'json'")
         return v
+
+    def checks_per_sweep_limits(self) -> dict[str, int]:
+        limits = {}
+        for entry in filter(None, (e.strip() for e in self.checks_per_sweep.split(";"))):
+            slug, _, n = entry.partition("=")
+            if not n.strip().isdigit() or int(n) < 1:
+                raise ValueError(f"Invalid CHECKS_PER_SWEEP entry {entry!r}: expected retailer=N")
+            limits[slug.strip().lower()] = int(n)
+        return limits
 
     @property
     def effective_user_agent(self) -> str:

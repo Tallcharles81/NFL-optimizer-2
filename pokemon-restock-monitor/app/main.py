@@ -66,13 +66,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-monitor", action="store_true", help="serve the dashboard without polling")
     parser.add_argument("--init-db", action="store_true", help="create database tables and exit")
     parser.add_argument("--once", action="store_true", help="check every product once, alert, and exit")
-    parser.add_argument("--catalog", help="with --once: CSV of products to import first (idempotent)")
+    parser.add_argument("--catalog", action="append",
+                        help="with --once: CSV of products to import first (idempotent; repeatable)")
     parser.add_argument("--loop-minutes", type=float, default=0,
                         help="with --once: keep checking for this many minutes instead of once")
     parser.add_argument("--sweep-seconds", type=float, default=75,
                         help="with --loop-minutes: start a new check of all products this often")
     parser.add_argument("--concurrency", type=int, default=1,
-                        help="with --once: check this many products at the same time")
+                        help="with --once: check this many products per retailer at the same time")
     parser.add_argument("--test-run", action="store_true",
                         help="with --once: label alerts [SIMULATION] (use with a scratch DATABASE_URL)")
     parser.add_argument("--host")

@@ -34,6 +34,7 @@ from app.utils.retry import RetryableError, retry_async
 logger = logging.getLogger("http")
 
 RETRYABLE_STATUS = {500, 502, 503, 504}
+BLOCK_STATUS = {403, 412}
 
 # Markers of an anti-bot interstitial. If we see one we stop -- we do not try
 # to get past it.
@@ -177,9 +178,10 @@ class PoliteHttpClient:
         if status in RETRYABLE_STATUS:
             raise RetryableError(f"HTTP {status}")
         text = resp.text
-        # Some retailers (e.g. Walmart) redirect to a /blocked page instead of returning 403.
+        # Some retailers (e.g. Walmart) answer a bot block with HTTP 412 or a redirect to a
+        # /blocked page instead of 403.
         blocked_redirect = urlsplit(str(resp.url)).path.startswith("/blocked")
-        if status == 403 or blocked_redirect or (status == 200 and looks_like_challenge(text)):
+        if status in BLOCK_STATUS or blocked_redirect or (status == 200 and looks_like_challenge(text)):
             reason = f"HTTP {status}: retailer denied access or served a bot challenge"
             self.limiter.record_blocked(reason)
             log_event(logger, "bot_challenge_or_forbidden", logging.ERROR, retailer=self.retailer,
