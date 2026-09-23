@@ -254,8 +254,25 @@ class NotificationService:
         msg = AlertMessage(kind="system", title=f"⚠️ {title}", text=text)
         return await self._deliver(f"system:{dedupe_key}", msg, None)
 
-    async def send_test_message(self) -> DeliveryReport:
+    async def send_test_message(self, retailer: str = "target") -> DeliveryReport:
         now = self.clock()
+        if retailer == "walmart":
+            # Looks like a real Walmart alert; the button opens the ETB listing it would watch.
+            msg = AlertMessage(
+                kind="test",
+                title="🚨 POKÉMON RESTOCK DETECTED",
+                text="TEST NOTIFICATION - this is not a real restock. This is what a Walmart alert looks like.",
+                product_name="Pokémon TCG: 30th Celebration Elite Trainer Box (TEST)",
+                retailer="Walmart",
+                store="Online",
+                status="AVAILABLE",
+                sku="20640569221",
+                detected=self.format_time(now),
+                url="https://www.walmart.com/ip/20640569221",
+                extra={"Seller": "Walmart.com", "UPC": "196214158801",
+                       "Verified": "Yes - confirmed by independent re-check"},
+            )
+            return await self._deliver(f"test:walmart:{now.isoformat()}", msg, None)
         msg = AlertMessage(
             kind="test",
             title="🚨 POKÉMON RESTOCK DETECTED",

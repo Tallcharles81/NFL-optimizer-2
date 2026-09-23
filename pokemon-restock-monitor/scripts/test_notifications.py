@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """Send a test notification through every configured channel (Discord, Telegram, email, console).
 
-  python scripts/test_notifications.py
+  python scripts/test_notifications.py [--retailer walmart]
 """
 
+import argparse
 import asyncio
 import sys
 
@@ -16,6 +17,10 @@ from app.utils.logging import configure_logging
 
 
 async def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--retailer", default="target", choices=["target", "walmart"],
+                        help="which retailer's alert to imitate")
+    args = parser.parse_args()
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_format)
     db = init_database(settings.database_url)
@@ -24,7 +29,7 @@ async def main() -> int:
     print(f"Configured channels: {', '.join(names)}")
     if names == ["console"]:
         print("Only the console channel is active. Set DISCORD_WEBHOOK_URL (and/or Telegram/email) in .env.")
-    report = await svc.send_test_message()
+    report = await svc.send_test_message(args.retailer)
     await svc.aclose()
     for ch in report.sent:
         print(f"  OK      {ch}")

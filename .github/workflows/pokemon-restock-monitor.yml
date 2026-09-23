@@ -30,6 +30,10 @@ on:
         description: "Send a test notification instead of checking stock"
         type: boolean
         default: false
+      test_retailer:
+        description: "With test_notification: which retailer's alert to imitate (target or walmart)"
+        type: string
+        default: "target"
       diagnose:
         description: "Diagnostics: capture product pages (no stock check)"
         type: boolean
@@ -119,7 +123,7 @@ jobs:
 
       - name: Send test notification
         if: inputs.test_notification
-        run: python scripts/test_notifications.py
+        run: python scripts/test_notifications.py --retailer "${{ inputs.test_retailer || 'target' }}"
 
       - name: Diagnose (capture product pages)
         if: inputs.diagnose
