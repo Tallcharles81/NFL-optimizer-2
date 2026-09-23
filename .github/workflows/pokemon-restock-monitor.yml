@@ -166,7 +166,7 @@ jobs:
           cat /tmp/live-test.csv
           python -m app.main --once --test-run --catalog /tmp/live-test.csv \
             --loop-minutes "${{ inputs.live_test_minutes || '0' }}" \
-            --sweep-seconds "${{ vars.SWEEP_SECONDS || '30' }}" --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
+            --sweep-seconds "${{ vars.SWEEP_SECONDS || '30' }}" --concurrency "${{ vars.CHECK_CONCURRENCY || '4' }}"
 
       - name: Restore saved state
         if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
@@ -186,7 +186,7 @@ jobs:
           --catalog catalog/walmart_30th_celebration.csv
           --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
           --sweep-seconds "${{ vars.SWEEP_SECONDS || '30' }}"
-          --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
+          --concurrency "${{ vars.CHECK_CONCURRENCY || '4' }}"
 
       - name: Save state
         if: ${{ always() && !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
