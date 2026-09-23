@@ -54,8 +54,8 @@ async def test_catalog_import_is_idempotent(harness):
     with harness.rt.db.session() as s:
         first = import_catalog(s, str(CATALOG))
         second = import_catalog(s, str(CATALOG))
-    assert len(first["added"]) == 9 and first["errors"] == []
-    assert second["added"] == [] and second["existing"] == 9
+    assert len(first["added"]) == 8 and first["errors"] == []
+    assert second["added"] == [] and second["existing"] == 8
     with harness.rt.db.session() as s:
         etb = s.scalar(select(Product).where(Product.sku == "1010892076"))
     assert etb.dpci == "361-00-8095" and etb.upc == "196214158801"
@@ -147,7 +147,7 @@ async def test_walmart_catalog_imports(harness):
 
     with harness.rt.db.session() as s:
         result = import_catalog(s, str(CATALOG.parent / "walmart_30th_celebration.csv"))
-        assert result["errors"] == [] and len(result["added"]) == 5
+        assert result["errors"] == [] and len(result["added"]) == 4
         assert {p.retailer.slug for p in result["added"]} == {"walmart"}
 
 
@@ -185,3 +185,25 @@ async def test_unreadable_round_backs_off_and_survives_restart(harness):
     harness.sim.limiter.resume()  # forget the in-memory pause: it must come back from the database
     summary = await run_once(harness.settings, runtime=harness.rt)
     assert summary["checked"] == 0 and harness.sim.request_count == before
+
+
+def test_sync_catalog_disables_removed_products(harness, tmp_path):
+    from app.models import Product
+    from app.services.product_service import catalog_keys, import_catalog, sync_to_catalog
+
+    full = tmp_path / "full.csv"
+    full.write_text("name,tcin\nKeep,11111111\nDrop,22222222\n", encoding="utf-8")
+    trimmed = tmp_path / "trimmed.csv"
+    trimmed.write_text("name,tcin\nKeep,11111111\n", encoding="utf-8")
+
+    def enabled():
+        with harness.rt.db.session() as s:
+            return {p.sku: p.enabled for p in s.scalars(select(Product))}
+
+    with harness.rt.db.session() as s:
+        import_catalog(s, str(full))
+        sync_to_catalog(s, catalog_keys(str(trimmed)))
+    assert enabled() == {"11111111": True, "22222222": False}
+    with harness.rt.db.session() as s:  # putting the row back turns it on again
+        sync_to_catalog(s, catalog_keys(str(full)))
+    assert enabled() == {"11111111": True, "22222222": True}

@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true", help="check every product once, alert, and exit")
     parser.add_argument("--catalog", action="append",
                         help="with --once: CSV of products to import first (idempotent; repeatable)")
+    parser.add_argument("--sync-catalog", action="store_true",
+                        help="with --catalog: stop checking online products that aren't in the catalogs")
     parser.add_argument("--loop-minutes", type=float, default=0,
                         help="with --once: keep checking for this many minutes instead of once")
     parser.add_argument("--sweep-seconds", type=float, default=75,
@@ -95,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
 
         asyncio.run(run_once(settings, catalog=args.catalog, is_test=args.test_run,
                              loop_minutes=args.loop_minutes, sweep_seconds=args.sweep_seconds,
-                             concurrency=args.concurrency))
+                             concurrency=args.concurrency, sync_catalog=args.sync_catalog))
         return 0
 
     if args.init_db:
