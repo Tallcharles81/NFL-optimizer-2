@@ -185,7 +185,7 @@ jobs:
         if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
         run: >-
           python -m app.main --once --catalog catalog/target_30th_celebration.csv
-          --catalog catalog/walmart_30th_celebration.csv --sync-catalog
+          --sync-catalog
           --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
           --sweep-seconds "${{ vars.SWEEP_SECONDS || '10' }}"
           --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"

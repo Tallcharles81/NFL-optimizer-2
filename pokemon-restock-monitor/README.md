@@ -412,6 +412,11 @@ scheduler tick (5s) ─► due products ─► RetailerMonitor.check()  ──(r
 
 ## Walmart: current status and limitations
 
+**Not monitored by the GitHub workflow any more.** Walmart blocked the monitor (HTTP 412) even at a
+single page load after a 6-hour pause, so the workflow no longer passes
+`catalog/walmart_30th_celebration.csv`; `--sync-catalog` switches its products off. Add the
+`--catalog catalog/walmart_30th_celebration.csv` line back to the workflow to try again.
+
 - **Online:** fetches the public item page `https://www.walmart.com/ip/<item id>` with plain
   HTTP (robots.txt allows `/ip/`) and reads the product data the page is built from: every offer
   on the page with its seller and stock status. Validated against live pages.
