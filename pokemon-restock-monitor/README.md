@@ -30,6 +30,7 @@ polling that retailer** for a cooldown period and tells you.
 11. [Adding another retailer](#11-adding-another-retailer)
 12. [How it works](#how-it-works)
 13. [Target: current status and limitations](#target-current-status-and-limitations)
+14. [Walmart: current status and limitations](#walmart-current-status-and-limitations)
 
 ---
 
@@ -37,7 +38,9 @@ polling that retailer** for a cooldown period and tells you.
 
 The workflow `.github/workflows/pokemon-restock-monitor.yml` (at the repo root) runs the monitor on
 GitHub Actions, for free on public repos. Each run re-checks every product in
-`catalog/target_30th_celebration.csv` about every 45 seconds for 20 minutes, then queues the next
+`catalog/target_30th_celebration.csv` about every 45 seconds for 20 minutes (the Walmart listings in
+`catalog/walmart_30th_celebration.csv` take turns, one per round; see
+[Walmart](#walmart-current-status-and-limitations)), then queues the next
 run itself, so checking is continuous (a 15-minute schedule is only a backup). Restocks are verified
 with a second check and alerted once. State is saved between runs on a `monitor-state` branch.
 To stop monitoring, set the repository variable `MONITOR_ENABLED=false` or disable the workflow in
@@ -116,7 +119,8 @@ only in `.env`**, which is git-ignored and never hard-coded.
 | `MIN_REQUEST_INTERVAL_SECONDS` | 5 | Minimum gap between any two requests to one retailer |
 | `MAX_RETRIES` | 3 | Retries for transient errors only (timeouts, 5xx), never for 429/403 |
 | `CIRCUIT_BREAKER_THRESHOLD` / `_COOLDOWN_SECONDS` | 5 / 1800 | Stop a retailer after repeated failures |
-| `BLOCKED_COOLDOWN_SECONDS` | 21600 | Pause after a CAPTCHA/bot challenge/403 (6 h) |
+| `BLOCKED_COOLDOWN_SECONDS` | 21600 | Pause after a CAPTCHA/bot challenge/403/412 (6 h) |
+| `CHECKS_PER_SWEEP` | `walmart=1` | One-shot mode: at most N products of these retailers per round, taking turns |
 | `VERIFICATION_DELAY_SECONDS` / `VERIFICATION_CHECKS` | 10 / 1 | False-positive protection |
 | `ACCEPT_THIRD_PARTY` | `false` | Marketplace (non-retailer) sellers don't alert |
 | `ALERT_ON_LIMITED` / `ALERT_ON_PREORDER` | true / false | Which statuses count as a restock |
@@ -402,6 +406,23 @@ scheduler tick (5s) ─► due products ─► RetailerMonitor.check()  ──(r
   and set `supports_store_inventory = True`. Nothing else in the app has to change.
 - You're responsible for making sure your use complies with each retailer's terms of use. Keep
   polling conservative.
+
+## Walmart: current status and limitations
+
+- **Online:** fetches the public item page `https://www.walmart.com/ip/<item id>` with plain
+  HTTP (robots.txt allows `/ip/`) and reads the product data the page is built from: every offer
+  on the page with its seller and stock status. Validated against live pages.
+- **Walmart-sold only:** many sellers share one Walmart item page. Only an offer sold by
+  Walmart.com counts; Marketplace sellers are third party and never alert. Marketplace-only
+  copies of a product (their own item ID, usually a UPC not starting with `196214`) are left out of
+  the catalog, because Walmart itself never sells on them. `scripts/capture_page.py --retailer
+  walmart --sku <item id>` prints an item's UPC and current seller.
+- **Pace:** Walmart blocks quick bursts of requests (HTTP 412). Only one Walmart product is checked
+  per round (`CHECKS_PER_SWEEP=walmart=1`), least recently checked first, so each Walmart listing is
+  re-checked every few minutes, not every 45 seconds. A 412 or `/blocked` page pauses Walmart
+  checks for `BLOCKED_COOLDOWN_SECONDS` and sends you a notice; the monitor never tries to get
+  past it.
+- **Store level:** not implemented (`UNKNOWN`).
 
 ## Tests
 
