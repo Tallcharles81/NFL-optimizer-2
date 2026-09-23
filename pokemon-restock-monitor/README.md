@@ -121,6 +121,7 @@ only in `.env`**, which is git-ignored and never hard-coded.
 | `CIRCUIT_BREAKER_THRESHOLD` / `_COOLDOWN_SECONDS` | 5 / 1800 | Stop a retailer after repeated failures |
 | `BLOCKED_COOLDOWN_SECONDS` | 21600 | Pause after a CAPTCHA/bot challenge/403/412 (6 h) |
 | `FAST_ALERT` | false (true in the GitHub workflow) | Alert on the first sighting of a restock, before the double-check (~12 s sooner). If the double-check fails, a "False alarm" note follows. |
+| `MIN_CHECK_GAP_SECONDS` | `walmart=60` | One-shot mode: at least this many seconds between two checks at these retailers, however fast the rounds are |
 | `CHECKS_PER_SWEEP` | `walmart=1` | One-shot mode: at most N products of these retailers per round, taking turns |
 | `VERIFICATION_DELAY_SECONDS` / `VERIFICATION_CHECKS` | 10 / 1 | False-positive protection |
 | `ACCEPT_THIRD_PARTY` | `false` | Marketplace (non-retailer) sellers don't alert |
@@ -418,9 +419,11 @@ scheduler tick (5s) ─► due products ─► RetailerMonitor.check()  ──(r
   copies of a product (their own item ID, usually a UPC not starting with `196214`) are left out of
   the catalog, because Walmart itself never sells on them. `scripts/capture_page.py --retailer
   walmart --sku <item id>` prints an item's UPC and current seller.
-- **Pace:** Walmart blocks quick bursts of requests (HTTP 412). Only one Walmart product is checked
-  per round (`CHECKS_PER_SWEEP=walmart=1`), least recently checked first, so each Walmart listing is
-  re-checked every few minutes, not every 45 seconds. A 412 or `/blocked` page pauses Walmart
+- **Pace:** Walmart blocks quick bursts of requests (HTTP 412); one page every ~30 s was blocked
+  within minutes, one every ~45-60 s ran for hours. Only one Walmart product is checked per round
+  (`CHECKS_PER_SWEEP=walmart=1`), least recently checked first, and never more than one Walmart
+  page per minute (`MIN_CHECK_GAP_SECONDS=walmart=60`), so each Walmart listing is re-checked about
+  every 5 minutes. A 412 or `/blocked` page pauses Walmart
   checks for `BLOCKED_COOLDOWN_SECONDS` and sends you a notice; the monitor never tries to get
   past it.
 - **Store level:** not implemented (`UNKNOWN`).

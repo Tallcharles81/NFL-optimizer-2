@@ -100,6 +100,8 @@ jobs:
       MIN_REQUEST_INTERVAL_SECONDS: ${{ vars.MIN_REQUEST_INTERVAL_SECONDS || '3' }}
       # Walmart blocks fast checking: one Walmart product per sweep, taking turns.
       CHECKS_PER_SWEEP: ${{ vars.CHECKS_PER_SWEEP || 'walmart=1' }}
+      # ...and never more often than once a minute, however fast Target is checked.
+      MIN_CHECK_GAP_SECONDS: ${{ vars.MIN_CHECK_GAP_SECONDS || 'walmart=60' }}
     steps:
       - uses: actions/checkout@v4
 
