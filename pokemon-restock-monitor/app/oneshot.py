@@ -26,7 +26,7 @@ from app.config import Settings
 from app.database import utcnow
 from app.models import Event, EventType, InventoryCheck, InventoryState, InventoryStatus, Product, Retailer
 from app.runtime import Runtime, build_runtime
-from app.services.product_service import import_catalog
+from app.services.product_service import catalog_keys, import_catalog, sync_to_catalog
 from app.utils.logging import log_event
 
 logger = logging.getLogger("oneshot")
@@ -36,13 +36,14 @@ KEEP_CHECK_HISTORY_DAYS = 14
 
 async def run_once(settings: Settings, catalog: str | list[str] | None = None, runtime: Runtime | None = None,
                    is_test: bool = False, loop_minutes: float = 0, sweep_seconds: float = 75,
-                   concurrency: int = 1, sleep=asyncio.sleep) -> dict:
+                   concurrency: int = 1, sync_catalog: bool = False, sleep=asyncio.sleep) -> dict:
     """Check every product once -- or, with ``loop_minutes``, keep sweeping for that long.
 
     A sweep checks all products; a new sweep starts every ``sweep_seconds`` (± 20 %),
     or right away if a sweep took longer. ``concurrency`` products per retailer are checked
     at once (each retailer's rate limiter still spaces request starts). ``is_test`` labels
-    alerts [SIMULATION].
+    alerts [SIMULATION]. ``sync_catalog`` makes the catalogs the full watch list: other
+    online products are disabled.
     """
     rt = runtime or build_runtime(settings, is_simulation=is_test)
     summary = {"sweeps": 0, "checked": 0, "skipped": 0, "restocks": 0}
@@ -54,6 +55,15 @@ async def run_once(settings: Settings, catalog: str | list[str] | None = None, r
                     log_event(logger, "product_imported", sku=p.sku, name=p.product_name)
                 for err in result["errors"]:
                     log_event(logger, "catalog_error", logging.ERROR, error=err)
+        if sync_catalog and catalog:
+            # The catalogs are the full watch list: products no longer listed stop being checked.
+            keys = set().union(*(catalog_keys(p) for p in ([catalog] if isinstance(catalog, str) else catalog)))
+            with rt.db.session() as s:
+                changed = sync_to_catalog(s, keys)
+                for p in changed["disabled"]:
+                    log_event(logger, "product_disabled", sku=p.sku, name=p.product_name, reason="not in catalog")
+                for p in changed["enabled"]:
+                    log_event(logger, "product_enabled", sku=p.sku, name=p.product_name)
 
         await rt.monitor.recover()
         loop = asyncio.get_running_loop()

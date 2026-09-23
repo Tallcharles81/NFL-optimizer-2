@@ -306,3 +306,37 @@ def import_catalog(session: Session, path: str, retailer: str = "target", max_qu
                 continue
             result["added"].append(product)
     return result
+
+
+def catalog_keys(path: str, retailer: str = "target") -> set[tuple[str, str]]:
+    """(retailer, sku) of every row in a catalog CSV."""
+    import csv
+
+    keys = set()
+    with open(path, newline="", encoding="utf-8") as f:
+        for raw in csv.DictReader(f):
+            row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+            sku = row.get("tcin") or row.get("sku") or row.get("item_id")
+            if sku:
+                keys.add(((row.get("retailer") or retailer).lower(), sku))
+    return keys
+
+
+def sync_to_catalog(session: Session, keys: set[tuple[str, str]]) -> dict:
+    """Enable exactly the online products listed in the catalogs; disable the rest.
+
+    Removing a row from a catalog then stops monitoring it (its history is kept), and
+    adding it back turns monitoring on again. Store-level and simulated products are untouched.
+    """
+    changed = {"enabled": [], "disabled": []}
+    rows = session.execute(select(Product, Retailer.slug).join(Retailer, Retailer.id == Product.retailer_id))
+    for product, slug in rows:
+        if product.store_id or slug == SimulatedRetailer.slug:
+            continue
+        want = (slug, product.sku) in keys
+        if product.enabled != want:
+            product.enabled = want
+            changed["enabled" if want else "disabled"].append(product)
+    session.flush()
+    return changed
+
