@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # Retailers that only tolerate a gentle pace: at most N product checks per sweep,
     # least recently checked first. Format: "walmart=1;other=2".
     checks_per_sweep: str = "walmart=1"
+    # ...and at least this many seconds between two checks at that retailer, however fast
+    # the sweeps are. Format: "walmart=60;other=30".
+    min_check_gap_seconds: str = "walmart=60"
 
     # --- Rate limiting / HTTP -------------------------------------------------
     min_request_interval_seconds: float = 5
@@ -152,14 +155,21 @@ class Settings(BaseSettings):
             raise ValueError("LOG_FORMAT must be 'console' or 'json'")
         return v
 
-    def checks_per_sweep_limits(self) -> dict[str, int]:
+    @staticmethod
+    def _per_retailer_ints(raw: str, name: str) -> dict[str, int]:
         limits = {}
-        for entry in filter(None, (e.strip() for e in self.checks_per_sweep.split(";"))):
+        for entry in filter(None, (e.strip() for e in raw.split(";"))):
             slug, _, n = entry.partition("=")
             if not n.strip().isdigit() or int(n) < 1:
-                raise ValueError(f"Invalid CHECKS_PER_SWEEP entry {entry!r}: expected retailer=N")
+                raise ValueError(f"Invalid {name} entry {entry!r}: expected retailer=N")
             limits[slug.strip().lower()] = int(n)
         return limits
+
+    def checks_per_sweep_limits(self) -> dict[str, int]:
+        return self._per_retailer_ints(self.checks_per_sweep, "CHECKS_PER_SWEEP")
+
+    def min_check_gaps(self) -> dict[str, int]:
+        return self._per_retailer_ints(self.min_check_gap_seconds, "MIN_CHECK_GAP_SECONDS")
 
     @property
     def effective_user_agent(self) -> str:

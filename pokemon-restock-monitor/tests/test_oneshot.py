@@ -149,3 +149,27 @@ async def test_walmart_catalog_imports(harness):
         result = import_catalog(s, str(CATALOG.parent / "walmart_30th_celebration.csv"))
         assert result["errors"] == [] and len(result["added"]) == 5
         assert {p.retailer.slug for p in result["added"]} == {"walmart"}
+
+
+async def test_min_check_gap_spaces_out_a_retailer(make_harness):
+    h = make_harness(checks_per_sweep="simulated=1", min_check_gap_seconds="simulated=60")
+    for sku in ("A", "B"):
+        h.add(sku)
+        h.sim.set_status(sku, S.OUT_OF_STOCK)
+    first = await run_once(h.settings, runtime=h.rt)
+    second = await run_once(h.settings, runtime=h.rt)  # seconds later: too soon for this retailer
+    assert first["checked"] == 1 and second["checked"] == 0
+
+
+async def test_no_unreadable_alert_while_retailer_is_paused(harness):
+    from app.utils.rate_limit import BotChallengeError
+
+    harness.add("A")
+    harness.sim.queue("A", [BotChallengeError("HTTP 412: retailer denied access")])
+    await run_once(harness.settings, runtime=harness.rt)
+    titles = [m.title for m in harness.console.sent if m.kind == "system"]
+    assert any("paused" in t for t in titles) and not any("can't read" in t for t in titles)
+
+
+def test_min_check_gap_setting(settings):
+    assert settings.min_check_gaps() == {"walmart": 60}

@@ -92,6 +92,7 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
             .where(Product.enabled.is_(True), Retailer.enabled.is_(True))
             .order_by(Product.id)
         ).all()
+    rows = _respect_check_gaps(rows, rt.settings.min_check_gaps(), now, summary)
     rows = _limit_per_retailer(rows, rt.settings.checks_per_sweep_limits(), summary)
     by_retailer = defaultdict(list)
     # Each retailer gets its own slots, so a slow retailer never holds up another.
@@ -119,6 +120,21 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
     await _health_alerts(rt, by_retailer)
 
 
+def _respect_check_gaps(rows, gaps: dict[str, int], now, summary: dict) -> list:
+    """Skip a retailer this sweep if it was checked less than ``gaps[slug]`` seconds ago."""
+    if not gaps:
+        return list(rows)
+    latest: dict[str, object] = {}
+    for row in rows:
+        if row[4] is not None and (row[1] not in latest or row[4] > latest[row[1]]):
+            latest[row[1]] = row[4]
+    too_soon = {slug for slug, gap in gaps.items()
+                if slug in latest and (now - latest[slug]).total_seconds() < gap}
+    kept = [r for r in rows if r[1] not in too_soon]
+    summary["skipped"] += len(rows) - len(kept)
+    return kept
+
+
 def _limit_per_retailer(rows, limits: dict[str, int], summary: dict) -> list:
     """Keep at most ``limits[slug]`` products per limited retailer: the least recently checked."""
     if not limits:
@@ -140,6 +156,8 @@ async def _health_alerts(rt: Runtime, by_retailer: dict) -> None:
     """One alert per retailer per day if nothing could be read this run."""
     today = utcnow().strftime("%Y%m%d")
     for slug, observations in by_retailer.items():
+        if rt.monitor.retailers.get(slug).limiter.is_paused():
+            continue  # a "monitoring paused" notice was already sent for this block
         readable = [o for o in observations if o.request_success and o.status != InventoryStatus.UNKNOWN]
         if readable or not observations:
             continue
