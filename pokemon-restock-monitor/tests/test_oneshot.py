@@ -54,8 +54,8 @@ async def test_catalog_import_is_idempotent(harness):
     with harness.rt.db.session() as s:
         first = import_catalog(s, str(CATALOG))
         second = import_catalog(s, str(CATALOG))
-    assert len(first["added"]) == 2 and first["errors"] == []
-    assert second["added"] == [] and second["existing"] == 2
+    assert len(first["added"]) == 3 and first["errors"] == []
+    assert second["added"] == [] and second["existing"] == 3
     with harness.rt.db.session() as s:
         etb = s.scalar(select(Product).where(Product.sku == "1010892076"))
     assert etb.dpci == "361-00-8095" and etb.upc == "196214158801"
