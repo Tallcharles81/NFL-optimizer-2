@@ -173,3 +173,15 @@ async def test_no_unreadable_alert_while_retailer_is_paused(harness):
 
 def test_min_check_gap_setting(settings):
     assert settings.min_check_gaps() == {"walmart": 60}
+
+
+async def test_unreadable_round_backs_off_and_survives_restart(harness):
+    harness.add("A")
+    harness.add("B")
+    await run_once(harness.settings, runtime=harness.rt)  # simulated status defaults to UNKNOWN
+    assert harness.sim.limiter.is_paused()
+    before = harness.sim.request_count
+    harness.restart()
+    harness.sim.limiter.resume()  # forget the in-memory pause: it must come back from the database
+    summary = await run_once(harness.settings, runtime=harness.rt)
+    assert summary["checked"] == 0 and harness.sim.request_count == before

@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     circuit_breaker_threshold: int = 5
     circuit_breaker_cooldown_seconds: float = 1800
     blocked_cooldown_seconds: float = 21600
+    # If a whole round of checks at a retailer returns no stock status (pages come back without
+    # product details -- often a quiet block), stop checking that retailer for this long.
+    unreadable_backoff_seconds: float = 1800
     robots_cache_seconds: float = 86400
     contact_email: str = "unset@example.com"
     user_agent: str = "PokemonRestockMonitor/1.0 (personal stock alert bot; contact: {contact})"

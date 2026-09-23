@@ -309,6 +309,14 @@ class InventoryMonitor:
             add_event(s, EventType.CHECK_ERROR, ref, message=obs.error, is_simulation=self.is_simulation,
                       details={"error_kind": obs.error_kind, "http_status": obs.http_status})
 
+    def back_off(self, slug: str, seconds: float, reason: str) -> None:
+        """Pause one retailer for a while and save that, so later runs respect it too."""
+        retailer = self.retailers.get(slug)
+        retailer.limiter.record_backoff(seconds, reason)
+        with self.db.session() as s:
+            self._sync_retailer_row(s, retailer)
+        log_event(logger, "retailer_backoff", logging.WARNING, retailer=slug, seconds=seconds, reason=reason)
+
     def _sync_retailer_row(self, s, retailer: RetailerMonitor) -> list[tuple[str, str, str]]:
         """Persist limiter state; returns system alerts to send for new blocks/suspensions."""
         row = s.scalar(select(Retailer).where(Retailer.slug == retailer.slug))

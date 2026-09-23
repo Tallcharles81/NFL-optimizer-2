@@ -213,6 +213,10 @@ class RateLimiter:
             self._pause(self.circuit_cooldown, RetailerHealth.SUSPENDED, "circuit breaker after repeated 429s")
         return delay
 
+    def record_backoff(self, seconds: float, reason: str) -> None:
+        """Voluntary pause when the retailer's pages stop showing stock (a likely soft block)."""
+        self._pause(seconds, RetailerHealth.RATE_LIMITED, reason)
+
     def record_blocked(self, reason: str) -> None:
         self.consecutive_failures += 1
         self._pause(self.blocked_cooldown, RetailerHealth.BLOCKED, reason)

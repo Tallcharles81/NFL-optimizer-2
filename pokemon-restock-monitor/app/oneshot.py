@@ -153,8 +153,13 @@ def _limit_per_retailer(rows, limits: dict[str, int], summary: dict) -> list:
 
 
 async def _health_alerts(rt: Runtime, by_retailer: dict) -> None:
-    """One alert per retailer per day if nothing could be read this run."""
+    """If a whole round at a retailer returned no stock status: back off, and alert once a day.
+
+    Pages that load without product details usually mean the retailer is quietly holding
+    them back, so checks pause for UNREADABLE_BACKOFF_SECONDS instead of carrying on.
+    """
     today = utcnow().strftime("%Y%m%d")
+    backoff = rt.settings.unreadable_backoff_seconds
     for slug, observations in by_retailer.items():
         if rt.monitor.retailers.get(slug).limiter.is_paused():
             continue  # a "monitoring paused" notice was already sent for this block
@@ -162,11 +167,15 @@ async def _health_alerts(rt: Runtime, by_retailer: dict) -> None:
         if readable or not observations:
             continue
         sample = next((o.error or o.message for o in observations if o.error or o.message), "unknown reason")
+        if backoff > 0:
+            rt.monitor.back_off(slug, backoff, f"no stock status on {len(observations)} pages: {sample}")
+        pause_note = (f" Pausing {slug.title()} checks for {backoff / 60:.0f} minutes, then trying again."
+                      if backoff > 0 else "")
         await rt.notifications.send_system_alert(
             f"unreadable:{slug}:{today}",
             f"Restock monitor can't read {slug.title()} right now",
             f"None of {len(observations)} product checks returned a stock status, so restocks at "
-            f"{slug.title()} would be missed. Reason: {sample}",
+            f"{slug.title()} would be missed. Reason: {sample}.{pause_note}",
         )
 
 
