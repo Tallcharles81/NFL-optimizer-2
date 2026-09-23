@@ -160,8 +160,11 @@ class InventoryMonitor:
             report = await self.notifications.send_restock_alert(event_id)
             outcome.notified_channels += report.sent
 
-        # 4. Verify + alert
+        # 4. Verify + alert (with FAST_ALERT, alert first so no seconds are lost to the double-check)
         if outcome.detection is not None:
+            if self.settings.fast_alert:
+                report = await self.notifications.send_early_alert(outcome.detection.event_id)
+                outcome.notified_channels += report.sent
             try:
                 await self._verify_and_alert(ref, retailer, outcome)
             except Exception:
@@ -222,7 +225,8 @@ class InventoryMonitor:
                 detection_latency_ms=ms_between(obs.checked_at, obs.inventory_changed_at),
                 detection_window_ms=ms_between(obs.checked_at, prev_success_at),
                 details={"seller_name": obs.seller_name, "seller_type": obs.seller_type.value,
-                         "price": obs.price, "quantity": obs.quantity, "source": obs.source},
+                         "price": obs.price, "quantity": obs.quantity, "source": obs.source,
+                         "product_url": self.retailers.get(ref.retailer).get_product_url(ref)},
             )
             return Detection(detected.id, state.restock_episode, prev_status, prev_seller, kind, obs,
                              prev_success_at)
@@ -421,7 +425,16 @@ class InventoryMonitor:
                   (result.evaluations[-1].status.value if result.evaluations else "?"), "VERIFY",
                   {"CONFIRMED": "VERIFIED"}.get(result.outcome.value, result.outcome.value))
 
-        if confirmed_id is not None:
+        if self.settings.fast_alert and confirmed_id is None:
+            if result.outcome == VerificationOutcome.FALSE_POSITIVE:
+                await self.notifications.send_false_alarm(det.event_id, result.reason)
+        if (confirmed_id is not None and self.settings.fast_alert
+                and self.notifications.link_early_alert(confirmed_id, det.event_id)):
+            # You were already alerted on the first sighting; don't ping again for the same restock.
+            outcome.confirmed_event_id = confirmed_id
+            log_event(logger, "restock_confirmed", logging.WARNING, retailer=ref.retailer.upper(), sku=ref.sku,
+                      store=ref.location_label, transition=det.kind, channels="(early alert)")
+        elif confirmed_id is not None:
             outcome.confirmed_event_id = confirmed_id
             report = await self.notifications.send_restock_alert(confirmed_id)
             outcome.notified_channels = report.sent

@@ -250,6 +250,57 @@ class NotificationService:
                     )
         return report
 
+    async def send_early_alert(self, detected_event_id: int) -> DeliveryReport:
+        """FAST_ALERT: alert on the first sighting, while the double-check runs."""
+        with self.db.session() as s:
+            event = s.get(Event, detected_event_id)
+            product = s.get(Product, event.product_id)
+            _ = product.retailer
+            message = self.build_restock_message(event, product)
+            message.extra["Verified"] = "Double-checking now (alerted on first sighting to save time)"
+            store_key = product.store_id or "online"
+            dedupe_key = f"restock:{product.id}:{store_key}:ep{event.restock_episode}:early"
+        report = await self._deliver(dedupe_key, message, event)
+        if report.any_sent:
+            with self.db.session() as s:
+                event = s.get(Event, detected_event_id)
+                now = self.clock()
+                event.notification_sent = True
+                event.notified_at = now
+                event.total_latency_ms = ms_between(now, event.inventory_changed_at or event.detected_at)
+                log_event(logger, "early_alert_latency", product_id=event.product_id, sku=event.sku,
+                          detection_window_ms=event.detection_window_ms, total_latency_ms=event.total_latency_ms)
+        return report
+
+    def link_early_alert(self, confirmed_event_id: int, detected_event_id: int) -> bool:
+        """The confirmed restock was already alerted early: record that instead of alerting twice.
+
+        Returns False if the early alert never went out (then the normal alert should be sent).
+        """
+        with self.db.session() as s:
+            confirmed = s.get(Event, confirmed_event_id)
+            detected = s.get(Event, detected_event_id)
+            if detected.notification_sent and not confirmed.notification_sent:
+                confirmed.notification_sent = True
+                confirmed.notified_at = detected.notified_at
+                confirmed.total_latency_ms = detected.total_latency_ms
+                confirmed.details = {**(confirmed.details or {}), "alerted_early": True}
+            return bool(detected.notification_sent)
+
+    async def send_false_alarm(self, detected_event_id: int, reason: str | None) -> DeliveryReport:
+        """FAST_ALERT follow-up when the double-check did not confirm the early alert."""
+        with self.db.session() as s:
+            event = s.get(Event, detected_event_id)
+            if not event.notification_sent:
+                return DeliveryReport(f"false-alarm:{detected_event_id}")
+            product = s.get(Product, event.product_id)
+            name = product.product_name
+            key = f"false-alarm:{product.id}:ep{event.restock_episode}"
+        return await self.send_system_alert(
+            key, f"False alarm: {name}",
+            f"The double-check didn't confirm it's in stock ({reason or 'no reason given'}). "
+            "Sorry about the ping.")
+
     async def send_system_alert(self, dedupe_key: str, title: str, text: str) -> DeliveryReport:
         msg = AlertMessage(kind="system", title=f"⚠️ {title}", text=text)
         return await self._deliver(f"system:{dedupe_key}", msg, None)

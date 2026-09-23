@@ -120,6 +120,7 @@ only in `.env`**, which is git-ignored and never hard-coded.
 | `MAX_RETRIES` | 3 | Retries for transient errors only (timeouts, 5xx), never for 429/403 |
 | `CIRCUIT_BREAKER_THRESHOLD` / `_COOLDOWN_SECONDS` | 5 / 1800 | Stop a retailer after repeated failures |
 | `BLOCKED_COOLDOWN_SECONDS` | 21600 | Pause after a CAPTCHA/bot challenge/403/412 (6 h) |
+| `FAST_ALERT` | false (true in the GitHub workflow) | Alert on the first sighting of a restock, before the double-check (~12 s sooner). If the double-check fails, a "False alarm" note follows. |
 | `CHECKS_PER_SWEEP` | `walmart=1` | One-shot mode: at most N products of these retailers per round, taking turns |
 | `VERIFICATION_DELAY_SECONDS` / `VERIFICATION_CHECKS` | 10 / 1 | False-positive protection |
 | `ACCEPT_THIRD_PARTY` | `false` | Marketplace (non-retailer) sellers don't alert |
