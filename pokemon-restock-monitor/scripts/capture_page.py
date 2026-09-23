@@ -125,6 +125,12 @@ async def main() -> int:
         el = soup.select_one(sel)
         lines.append(f"=== {sel} ===")
         lines.append(str(el)[:3500] if el else "(not found)")
+    if args.retailer == "walmart":
+        from app.retailers.walmart import page_upc, parse_walmart_page
+
+        summary = f"WALMART RESULT: item={args.sku} upc={page_upc(html)} offer={parse_walmart_page(html)}"
+        lines.insert(0, summary)
+        print(summary)
     try:
         from app.retailers.target import parse_target_buy_box
 
