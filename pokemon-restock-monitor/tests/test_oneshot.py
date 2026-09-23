@@ -102,3 +102,16 @@ async def test_loop_mode_catches_restock_mid_run(harness):
     summary = await run_once(harness.settings, runtime=harness.rt, loop_minutes=0.02, sweep_seconds=0.1)
     await task
     assert summary["restocks"] == 1 and sent(harness) == 1
+
+
+async def test_concurrent_sweep_checks_all_and_alerts_once_each(harness):
+    for sku in ("A", "B", "C", "D"):
+        harness.add(sku)
+        harness.sim.set_status(sku, S.OUT_OF_STOCK)
+    await run_once(harness.settings, runtime=harness.rt, concurrency=3)
+    for sku in ("A", "C"):
+        harness.sim.set_status(sku, S.AVAILABLE)
+    summary = await run_once(harness.settings, runtime=harness.rt, concurrency=3)
+    assert summary["checked"] == 4 and summary["restocks"] == 2
+    await run_once(harness.settings, runtime=harness.rt, concurrency=3)
+    assert sent(harness) == 2

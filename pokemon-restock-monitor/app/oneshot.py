@@ -36,11 +36,13 @@ KEEP_CHECK_HISTORY_DAYS = 14
 
 async def run_once(settings: Settings, catalog: str | None = None, runtime: Runtime | None = None,
                    is_test: bool = False, loop_minutes: float = 0, sweep_seconds: float = 75,
-                   sleep=asyncio.sleep) -> dict:
+                   concurrency: int = 1, sleep=asyncio.sleep) -> dict:
     """Check every product once -- or, with ``loop_minutes``, keep sweeping for that long.
 
     A sweep checks all products; a new sweep starts every ``sweep_seconds`` (± 20 %),
-    or right away if a sweep took longer. ``is_test`` labels alerts [SIMULATION].
+    or right away if a sweep took longer. ``concurrency`` products are checked at once
+    (the retailer's rate limiter still spaces request starts). ``is_test`` labels
+    alerts [SIMULATION].
     """
     rt = runtime or build_runtime(settings, is_simulation=is_test)
     summary = {"sweeps": 0, "checked": 0, "skipped": 0, "restocks": 0}
@@ -59,7 +61,7 @@ async def run_once(settings: Settings, catalog: str | None = None, runtime: Runt
         rng = random.Random()
         while True:
             started = loop.time()
-            await _sweep(rt, summary)
+            await _sweep(rt, summary, concurrency)
             summary["sweeps"] += 1
             _prune(rt)
             if loop_minutes <= 0:
@@ -79,7 +81,7 @@ async def run_once(settings: Settings, catalog: str | None = None, runtime: Runt
             rt.db.dispose()
 
 
-async def _sweep(rt: Runtime, summary: dict) -> None:
+async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
     now = utcnow()
     with rt.db.session() as s:
         rows = s.execute(
@@ -90,19 +92,27 @@ async def _sweep(rt: Runtime, summary: dict) -> None:
             .order_by(Product.id)
         ).all()
     by_retailer = defaultdict(list)
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def check(pid: int, slug: str) -> None:
+        async with sem:
+            outcome = await rt.monitor.check_product(pid)
+        if outcome.skipped:
+            summary["skipped"] += 1
+            return
+        summary["checked"] += 1
+        by_retailer[slug].append(outcome.observation)
+        if outcome.confirmed_event_id:
+            summary["restocks"] += 1
+
+    tasks = []
     for pid, slug, errors, next_check in rows:
         # Respect per-product error backoff across sweeps and runs.
         if errors and next_check and next_check > now:
             summary["skipped"] += 1
             continue
-        outcome = await rt.monitor.check_product(pid)
-        if outcome.skipped:
-            summary["skipped"] += 1
-            continue
-        summary["checked"] += 1
-        by_retailer[slug].append(outcome.observation)
-        if outcome.confirmed_event_id:
-            summary["restocks"] += 1
+        tasks.append(check(pid, slug))
+    await asyncio.gather(*tasks)
     await _health_alerts(rt, by_retailer)
 
 

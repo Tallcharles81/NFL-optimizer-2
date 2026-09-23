@@ -37,7 +37,7 @@ polling that retailer** for a cooldown period and tells you.
 
 The workflow `.github/workflows/pokemon-restock-monitor.yml` (at the repo root) runs the monitor on
 GitHub Actions, for free on public repos. Each run re-checks every product in
-`catalog/target_30th_celebration.csv` about every 75 seconds for 20 minutes, then queues the next
+`catalog/target_30th_celebration.csv` about every 45 seconds for 20 minutes, then queues the next
 run itself, so checking is continuous (a 15-minute schedule is only a backup). Restocks are verified
 with a second check and alerted once. State is saved between runs on a `monitor-state` branch.
 To stop monitoring, set the repository variable `MONITOR_ENABLED=false` or disable the workflow in

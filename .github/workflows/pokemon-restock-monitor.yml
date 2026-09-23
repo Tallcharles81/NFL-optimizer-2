@@ -1,6 +1,6 @@
 # Pokémon restock monitor on GitHub Actions: no always-on computer needed.
 #
-# Each run keeps re-checking every product about every 75 seconds for 20
+# Each run keeps re-checking every product about every 45 seconds for 20
 # minutes, then queues the next run itself, so checking never stops. The
 # 15-minute schedule is only a backup (GitHub's scheduler can be late or not
 # fire at all). Only one run happens at a time.
@@ -52,7 +52,9 @@ permissions:
   actions: write   # lets a finished run queue the next one
 
 concurrency:
-  group: pokemon-restock-monitor
+  # Test / diagnose runs get their own queue so they never delay or replace the
+  # monitoring chain.
+  group: ${{ (inputs.live_test_tcins || inputs.diagnose || inputs.test_notification) && 'pokemon-restock-monitor-tests' || 'pokemon-restock-monitor' }}
   cancel-in-progress: false
 
 jobs:
@@ -76,6 +78,8 @@ jobs:
       ACCEPT_THIRD_PARTY: "false"
       ACCEPT_UNKNOWN_SELLER: "false"
       # Remind again while still in stock (each run is ~15 min apart)
+      # Faster double-check before alerting (the re-check itself takes ~6 s)
+      VERIFICATION_DELAY_SECONDS: ${{ vars.VERIFICATION_DELAY_SECONDS || '2' }}
       RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
       RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
     steps:
@@ -132,7 +136,7 @@ jobs:
           for t in $(echo "$TCINS" | tr ',' ' '); do printf 'Live test item %s,%s\n' "$t" "$t" >> /tmp/live-test.csv; done
           cat /tmp/live-test.csv
           python -m app.main --once --test-run --catalog /tmp/live-test.csv \
-            --loop-minutes "${{ inputs.live_test_minutes || '0' }}" --sweep-seconds 75
+            --loop-minutes "${{ inputs.live_test_minutes || '0' }}" --sweep-seconds 45 --concurrency 3
 
       - name: Restore saved state
         if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
@@ -150,7 +154,8 @@ jobs:
         run: >-
           python -m app.main --once --catalog catalog/target_30th_celebration.csv
           --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
-          --sweep-seconds "${{ vars.SWEEP_SECONDS || '75' }}"
+          --sweep-seconds "${{ vars.SWEEP_SECONDS || '45' }}"
+          --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
 
       - name: Save state
         if: ${{ always() && !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins && hashFiles('pokemon-restock-monitor/data/restock.db') != '' }}
