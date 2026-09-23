@@ -1,6 +1,6 @@
 # Pokémon restock monitor on GitHub Actions: no always-on computer needed.
 #
-# Each run keeps re-checking every product about every 45 seconds for 20
+# Each run keeps re-checking every product about every 30 seconds for 20
 # minutes, then queues the next run itself, so checking never stops. The
 # 15-minute schedule is only a backup (GitHub's scheduler can be late or not
 # fire at all). Only one run happens at a time.
@@ -96,6 +96,8 @@ jobs:
       VERIFICATION_DELAY_SECONDS: ${{ vars.VERIFICATION_DELAY_SECONDS || '2' }}
       RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
       RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
+      # Minimum gap between page loads at one retailer (the rate limiter).
+      MIN_REQUEST_INTERVAL_SECONDS: ${{ vars.MIN_REQUEST_INTERVAL_SECONDS || '3' }}
       # Walmart blocks fast checking: one Walmart product per sweep, taking turns.
       CHECKS_PER_SWEEP: ${{ vars.CHECKS_PER_SWEEP || 'walmart=1' }}
     steps:
@@ -161,7 +163,8 @@ jobs:
           for t in $(echo "$TCINS" | tr ',' ' '); do printf 'Live test item %s,%s,%s\n' "$t" "$RETAILER" "$t" >> /tmp/live-test.csv; done
           cat /tmp/live-test.csv
           python -m app.main --once --test-run --catalog /tmp/live-test.csv \
-            --loop-minutes "${{ inputs.live_test_minutes || '0' }}" --sweep-seconds 45 --concurrency 3
+            --loop-minutes "${{ inputs.live_test_minutes || '0' }}" \
+            --sweep-seconds "${{ vars.SWEEP_SECONDS || '30' }}" --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
 
       - name: Restore saved state
         if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
@@ -180,7 +183,7 @@ jobs:
           python -m app.main --once --catalog catalog/target_30th_celebration.csv
           --catalog catalog/walmart_30th_celebration.csv
           --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
-          --sweep-seconds "${{ vars.SWEEP_SECONDS || '45' }}"
+          --sweep-seconds "${{ vars.SWEEP_SECONDS || '30' }}"
           --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
 
       - name: Save state
