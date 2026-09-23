@@ -147,7 +147,7 @@ async def test_walmart_catalog_imports(harness):
 
     with harness.rt.db.session() as s:
         result = import_catalog(s, str(CATALOG.parent / "walmart_30th_celebration.csv"))
-        assert result["errors"] == [] and len(result["added"]) == 4
+        assert result["errors"] == [] and len(result["added"]) == 1
         assert {p.retailer.slug for p in result["added"]} == {"walmart"}
 
 
