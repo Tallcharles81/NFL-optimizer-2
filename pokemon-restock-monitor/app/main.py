@@ -71,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="with --once: keep checking for this many minutes instead of once")
     parser.add_argument("--sweep-seconds", type=float, default=75,
                         help="with --loop-minutes: start a new check of all products this often")
+    parser.add_argument("--concurrency", type=int, default=1,
+                        help="with --once: check this many products at the same time")
     parser.add_argument("--test-run", action="store_true",
                         help="with --once: label alerts [SIMULATION] (use with a scratch DATABASE_URL)")
     parser.add_argument("--host")
@@ -91,7 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         from app.oneshot import run_once
 
         asyncio.run(run_once(settings, catalog=args.catalog, is_test=args.test_run,
-                             loop_minutes=args.loop_minutes, sweep_seconds=args.sweep_seconds))
+                             loop_minutes=args.loop_minutes, sweep_seconds=args.sweep_seconds,
+                             concurrency=args.concurrency))
         return 0
 
     if args.init_db:
