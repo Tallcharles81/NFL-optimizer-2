@@ -127,7 +127,7 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
             continue
         tasks.append(check(pid, slug))
     await asyncio.gather(*tasks)
-    await _health_alerts(rt, by_retailer)
+    await _health_alerts(rt, by_retailer, rt.unreadable_streak)
 
 
 def _respect_check_gaps(rows, gaps: dict[str, int], now, summary: dict) -> list:
@@ -162,20 +162,31 @@ def _limit_per_retailer(rows, limits: dict[str, int], summary: dict) -> list:
     return [r for r in rows if r[0] in keep]
 
 
-async def _health_alerts(rt: Runtime, by_retailer: dict) -> None:
-    """If a whole round at a retailer returned no stock status: back off, and alert once a day.
+# Back off only after this many unreadable rounds in a row, so one bad round of a
+# short watch list doesn't pause a retailer.
+UNREADABLE_ROUNDS_BEFORE_BACKOFF = 3
+
+
+async def _health_alerts(rt: Runtime, by_retailer: dict, streak: dict | None = None) -> None:
+    """If rounds at a retailer keep returning no stock status: back off, and alert once a day.
 
     Pages that load without product details usually mean the retailer is quietly holding
     them back, so checks pause for UNREADABLE_BACKOFF_SECONDS instead of carrying on.
     """
     today = utcnow().strftime("%Y%m%d")
     backoff = rt.settings.unreadable_backoff_seconds
+    streak = {} if streak is None else streak
     for slug, observations in by_retailer.items():
         if rt.monitor.retailers.get(slug).limiter.is_paused():
             continue  # a "monitoring paused" notice was already sent for this block
         readable = [o for o in observations if o.request_success and o.status != InventoryStatus.UNKNOWN]
         if readable or not observations:
+            streak[slug] = 0
             continue
+        streak[slug] = streak.get(slug, 0) + 1
+        if streak[slug] < UNREADABLE_ROUNDS_BEFORE_BACKOFF:
+            continue
+        streak[slug] = 0
         sample = next((o.error or o.message for o in observations if o.error or o.message), "unknown reason")
         if backoff > 0:
             rt.monitor.back_off(slug, backoff, f"no stock status on {len(observations)} pages: {sample}")

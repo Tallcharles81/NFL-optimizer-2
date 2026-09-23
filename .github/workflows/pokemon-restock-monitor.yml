@@ -1,6 +1,6 @@
 # Pokémon restock monitor on GitHub Actions: no always-on computer needed.
 #
-# Each run keeps re-checking every product about every 45-50 seconds for 20
+# Each run keeps re-checking every product (about every 10-15 seconds) for 20
 # minutes, then queues the next run itself, so checking never stops. The
 # 15-minute schedule is only a backup (GitHub's scheduler can be late or not
 # fire at all). Only one run happens at a time.
@@ -167,7 +167,7 @@ jobs:
           cat /tmp/live-test.csv
           python -m app.main --once --test-run --catalog /tmp/live-test.csv \
             --loop-minutes "${{ inputs.live_test_minutes || '0' }}" \
-            --sweep-seconds "${{ vars.SWEEP_SECONDS || '45' }}" --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
+            --sweep-seconds "${{ vars.SWEEP_SECONDS || '10' }}" --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
 
       - name: Restore saved state
         if: ${{ !inputs.test_notification && !inputs.diagnose && !inputs.live_test_tcins }}
@@ -186,7 +186,7 @@ jobs:
           python -m app.main --once --catalog catalog/target_30th_celebration.csv
           --catalog catalog/walmart_30th_celebration.csv --sync-catalog
           --loop-minutes "${{ vars.LOOP_MINUTES || '20' }}"
-          --sweep-seconds "${{ vars.SWEEP_SECONDS || '45' }}"
+          --sweep-seconds "${{ vars.SWEEP_SECONDS || '10' }}"
           --concurrency "${{ vars.CHECK_CONCURRENCY || '3' }}"
 
       - name: Save state

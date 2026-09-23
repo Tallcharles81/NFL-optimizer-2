@@ -54,8 +54,8 @@ async def test_catalog_import_is_idempotent(harness):
     with harness.rt.db.session() as s:
         first = import_catalog(s, str(CATALOG))
         second = import_catalog(s, str(CATALOG))
-    assert len(first["added"]) == 8 and first["errors"] == []
-    assert second["added"] == [] and second["existing"] == 8
+    assert len(first["added"]) == 3 and first["errors"] == []
+    assert second["added"] == [] and second["existing"] == 3
     with harness.rt.db.session() as s:
         etb = s.scalar(select(Product).where(Product.sku == "1010892076"))
     assert etb.dpci == "361-00-8095" and etb.upc == "196214158801"
@@ -147,7 +147,7 @@ async def test_walmart_catalog_imports(harness):
 
     with harness.rt.db.session() as s:
         result = import_catalog(s, str(CATALOG.parent / "walmart_30th_celebration.csv"))
-        assert result["errors"] == [] and len(result["added"]) == 4
+        assert result["errors"] == [] and len(result["added"]) == 1
         assert {p.retailer.slug for p in result["added"]} == {"walmart"}
 
 
@@ -178,7 +178,10 @@ def test_min_check_gap_setting(settings):
 async def test_unreadable_round_backs_off_and_survives_restart(harness):
     harness.add("A")
     harness.add("B")
-    await run_once(harness.settings, runtime=harness.rt)  # simulated status defaults to UNKNOWN
+    for _ in range(2):  # simulated status defaults to UNKNOWN; one or two bad rounds don't pause
+        await run_once(harness.settings, runtime=harness.rt)
+        assert not harness.sim.limiter.is_paused()
+    await run_once(harness.settings, runtime=harness.rt)
     assert harness.sim.limiter.is_paused()
     before = harness.sim.request_count
     harness.restart()
