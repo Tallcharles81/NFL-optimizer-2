@@ -96,9 +96,10 @@ jobs:
       VERIFICATION_DELAY_SECONDS: ${{ vars.VERIFICATION_DELAY_SECONDS || '2' }}
       RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
       RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
-      # Minimum gap between page loads at one retailer (the rate limiter). A faster pace
-      # (3 s, 4 pages at a time) got Target to stop sending product details within hours.
-      MIN_REQUEST_INTERVAL_SECONDS: ${{ vars.MIN_REQUEST_INTERVAL_SECONDS || '5' }}
+      # Minimum gap between page loads at one retailer (the rate limiter). 5 s ran cleanly for
+      # many hours; 3 s with 4 pages at a time got Target to stop sending product details
+      # within hours. 4 s is in between; the back-off pauses Target if it pushes back.
+      MIN_REQUEST_INTERVAL_SECONDS: ${{ vars.MIN_REQUEST_INTERVAL_SECONDS || '4' }}
       # Walmart blocks fast checking: one Walmart product per sweep, taking turns.
       CHECKS_PER_SWEEP: ${{ vars.CHECKS_PER_SWEEP || 'walmart=1' }}
       # ...and never more often than once a minute, however fast Target is checked.
