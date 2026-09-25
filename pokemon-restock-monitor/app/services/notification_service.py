@@ -301,6 +301,19 @@ class NotificationService:
             f"The double-check didn't confirm it's in stock ({reason or 'no reason given'}). "
             "Sorry about the ping.")
 
+    async def send_sold_out(self, sold_out_event_id: int) -> DeliveryReport:
+        """A restock the user was alerted about has sold out again."""
+        with self.db.session() as s:
+            event = s.get(Event, sold_out_event_id)
+            product = s.get(Product, event.product_id)
+            name = product.product_name
+            key = f"soldout:{product.id}:ep{event.restock_episode}"
+            seconds = (event.details or {}).get("available_for_seconds")
+        lasted = f"In stock for about {format_duration(seconds)}. " if seconds is not None else ""
+        msg = AlertMessage(kind="soldout", title=f"Sold out: {name}",
+                           text=f"{lasted}Still watching for the next restock.")
+        return await self._deliver(key, msg, None)
+
     async def send_status_message(self, dedupe_key: str, title: str, text: str, ok: bool) -> DeliveryReport:
         """A health/status ping: ✅ when all is well, otherwise sent as a ⚠️ system alert."""
         if not ok:
@@ -384,3 +397,10 @@ class NotificationService:
     async def aclose(self) -> None:
         for c in self.channels:
             await c.aclose()
+
+
+def format_duration(seconds: float) -> str:
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    return f"{seconds // 60}m {seconds % 60:02d}s"

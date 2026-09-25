@@ -95,3 +95,28 @@ async def test_reminders_across_github_runs_never_duplicate(make_harness):
         keys = sorted(s.scalars(select(Event.dedupe_key).where(
             Event.event_type == EventType.RESTOCK_REMINDER.value)))
     assert [k.rsplit(":", 1)[1] for k in keys] == ["reminder1", "reminder2"]
+
+
+async def test_sold_out_notice_after_an_alerted_restock(make_harness):
+    h = make_harness(restock_reminder_minutes=0, restock_reminder_max=0)
+    pid = await restock(h)
+    h.sim.set_status("A", S.OUT_OF_STOCK)
+    for _ in range(3):
+        await h.check(pid)
+    sold = [m for m in h.console.sent if m.kind == "soldout"]
+    assert len(sold) == 1 and sold[0].title == "Sold out: Product A"
+    assert sold[0].text.startswith("In stock for about ")
+
+
+async def test_no_sold_out_notice_without_a_restock_alert(make_harness):
+    h = make_harness()
+    pid = h.add("A")
+    h.sim.set_status("A", S.OUT_OF_STOCK)
+    for _ in range(3):
+        await h.check(pid)
+    assert h.console.sent == []
+
+
+def test_format_duration():
+    from app.services.notification_service import format_duration
+    assert format_duration(9.6) == "10s" and format_duration(82) == "1m 22s"

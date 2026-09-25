@@ -97,8 +97,8 @@ jobs:
       FAST_ALERT: ${{ vars.FAST_ALERT || 'true' }}
       # Faster double-check (the re-check itself takes ~6 s)
       VERIFICATION_DELAY_SECONDS: ${{ vars.VERIFICATION_DELAY_SECONDS || '2' }}
-      RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '10' }}
-      RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '6' }}
+      RESTOCK_REMINDER_MINUTES: ${{ vars.RESTOCK_REMINDER_MINUTES || '1' }}
+      RESTOCK_REMINDER_MAX: ${{ vars.RESTOCK_REMINDER_MAX || '5' }}
       # Minimum gap between page loads at one retailer (the rate limiter). 5 s ran cleanly for
       # many hours; 3 s with 4 pages at a time got Target to stop sending product details
       # within hours. 4 s is in between; the back-off pauses Target if it pushes back.

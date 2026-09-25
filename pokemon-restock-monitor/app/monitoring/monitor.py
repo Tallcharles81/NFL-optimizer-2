@@ -135,6 +135,7 @@ class InventoryMonitor:
         # 3. Persist and decide
         system_alerts: list[tuple[str, str, str]] = []
         reminders: list[int] = []
+        sold_outs: list[int] = []
         with self.db.session() as s:
             state = s.scalar(select(InventoryState).where(InventoryState.product_id == product_id))
             now = self.clock()
@@ -146,7 +147,7 @@ class InventoryMonitor:
             else:
                 self.last_successful_check_at = now
                 outcome.detection = self._apply(s, ref, state, obs, ev, prev_status, prev_seller, prev_success_at,
-                                                reminders)
+                                                reminders, sold_outs)
             retailer_row = s.scalar(select(Retailer).where(Retailer.slug == ref.retailer))
             state.next_check_at = now + timedelta(seconds=self.policy.next_interval(
                 state, ref, retailer_row, type(retailer), now, retry_after=obs.retry_after))
@@ -159,6 +160,8 @@ class InventoryMonitor:
         for event_id in reminders:
             report = await self.notifications.send_restock_alert(event_id)
             outcome.notified_channels += report.sent
+        for event_id in sold_outs:
+            await self.notifications.send_sold_out(event_id)
 
         # 4. Verify + alert (with FAST_ALERT, alert first so no seconds are lost to the double-check)
         if outcome.detection is not None:
@@ -179,7 +182,7 @@ class InventoryMonitor:
     # ------------------------------------------------------------------------------
     def _apply(self, s, ref: ProductRef, state: InventoryState, obs: Observation, ev: Evaluation,
                prev_status: str, prev_seller: str | None, prev_success_at: datetime | None,
-               reminders: list[int] | None = None) -> Detection | None:
+               reminders: list[int] | None = None, sold_outs: list[int] | None = None) -> Detection | None:
         now = self.clock()
         state.consecutive_errors = 0
         state.last_error = None
@@ -240,10 +243,14 @@ class InventoryMonitor:
 
         if ev.closes_episode and state.episode_open:
             available_for = (now - state.episode_started_at).total_seconds() if state.episode_started_at else None
-            add_event(s, EventType.SOLD_OUT, ref, previous_status=prev_status, new_status=new_status,
-                      restock_episode=state.restock_episode, is_simulation=self.is_simulation,
-                      message=f"{arrow(prev_status, new_status)}; restock episode {state.restock_episode} ended",
-                      details={"available_for_seconds": available_for, "reason": ev.ignored_reason})
+            sold_out = add_event(
+                s, EventType.SOLD_OUT, ref, previous_status=prev_status, new_status=new_status,
+                restock_episode=state.restock_episode, is_simulation=self.is_simulation,
+                message=f"{arrow(prev_status, new_status)}; restock episode {state.restock_episode} ended",
+                details={"available_for_seconds": available_for, "reason": ev.ignored_reason})
+            # Tell the user a restock they were alerted about is over.
+            if state.alert_state == AlertState.CONFIRMED.value and sold_outs is not None:
+                sold_outs.append(sold_out.id)
             state.episode_open = False
             state.alert_state = AlertState.NONE.value
             state.recently_active_until = now + timedelta(minutes=self.settings.recently_active_window_minutes)
