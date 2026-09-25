@@ -123,6 +123,7 @@ only in `.env`**, which is git-ignored and never hard-coded.
 | `FAST_ALERT` | false (true in the GitHub workflow) | Alert on the first sighting of a restock, before the double-check (~12 s sooner). If the double-check fails, a "False alarm" note follows. |
 | `MIN_CHECK_GAP_SECONDS` | `walmart=60` | One-shot mode: at least this many seconds between two checks at these retailers, however fast the rounds are |
 | `UNREADABLE_BACKOFF_SECONDS` | 1800 | One-shot mode: if a whole round at a retailer returns no stock status, pause that retailer this long |
+| `DROP_CHECK_DAYS` / `DROP_CHECK_TIME` | empty (`tue,fri` / `02:45` in the GitHub workflow) | Before known drop windows, send one ✅ "ready" or ⚠️ "not ready" ping (local time, `TIMEZONE`) |
 | `CHECKS_PER_SWEEP` | `walmart=1` | One-shot mode: at most N products of these retailers per round, taking turns |
 | `VERIFICATION_DELAY_SECONDS` / `VERIFICATION_CHECKS` | 10 / 1 | False-positive protection |
 | `ACCEPT_THIRD_PARTY` | `false` | Marketplace (non-retailer) sellers don't alert |

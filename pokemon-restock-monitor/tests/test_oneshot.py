@@ -210,3 +210,44 @@ def test_sync_catalog_disables_removed_products(harness, tmp_path):
     with harness.rt.db.session() as s:  # putting the row back turns it on again
         sync_to_catalog(s, catalog_keys(str(full)))
     assert enabled() == {"11111111": True, "22222222": True}
+
+
+def _drop_settings(**extra):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    local = datetime.now(ZoneInfo("America/New_York"))
+    start = (local - timedelta(minutes=5)).strftime("%H:%M")
+    return {"drop_check_days": local.strftime("%a"), "drop_check_time": start, **extra}
+
+
+async def test_drop_readiness_ping_when_ready_once_per_day(make_harness):
+    from app.oneshot import _drop_readiness
+
+    h = make_harness(**_drop_settings())
+    pid = h.add("A")
+    h.sim.set_status("A", S.OUT_OF_STOCK)
+    await h.check(pid)
+    await _drop_readiness(h.rt)
+    await _drop_readiness(h.rt)
+    status = [m for m in h.console.sent if m.kind == "status"]
+    assert len(status) == 1 and "Ready for the" in status[0].title
+
+
+async def test_drop_readiness_warns_when_nothing_was_read(make_harness):
+    from app.oneshot import _drop_readiness
+
+    h = make_harness(**_drop_settings())
+    await _drop_readiness(h.rt)
+    warnings = [m for m in h.console.sent if m.kind == "system"]
+    assert len(warnings) == 1 and "NOT ready" in warnings[0].title
+
+
+async def test_drop_readiness_quiet_outside_window_or_when_off(make_harness):
+    from app.oneshot import _drop_readiness
+
+    off = make_harness()
+    await _drop_readiness(off.rt)
+    other_day = make_harness(**_drop_settings(drop_check_days="xyz"))
+    await _drop_readiness(other_day.rt)
+    assert off.console.sent == [] and other_day.console.sent == []

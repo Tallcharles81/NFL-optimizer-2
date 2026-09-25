@@ -32,7 +32,7 @@ class NtfyNotifier(Notifier):
             "title": title[:250],
             "message": "\n".join(lines)[:3900] or title,
             "priority": 5 if msg.kind == "restock" else 3,
-            "tags": ["rotating_light"] if msg.kind == "restock" else ["warning"],
+            "tags": {"restock": ["rotating_light"], "status": ["white_check_mark"]}.get(msg.kind, ["warning"]),
         }
         if msg.url:
             payload["click"] = msg.url

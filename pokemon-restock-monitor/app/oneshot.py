@@ -19,8 +19,9 @@ import logging
 import random
 from collections import defaultdict
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 
 from app.config import Settings
 from app.database import utcnow
@@ -128,6 +129,7 @@ async def _sweep(rt: Runtime, summary: dict, concurrency: int = 1) -> None:
         tasks.append(check(pid, slug))
     await asyncio.gather(*tasks)
     await _health_alerts(rt, by_retailer, rt.unreadable_streak)
+    await _drop_readiness(rt)
 
 
 def _respect_check_gaps(rows, gaps: dict[str, int], now, summary: dict) -> list:
@@ -198,6 +200,56 @@ async def _health_alerts(rt: Runtime, by_retailer: dict, streak: dict | None = N
             f"None of {len(observations)} product checks returned a stock status, so restocks at "
             f"{slug.title()} would be missed. Reason: {sample}.{pause_note}",
         )
+
+
+async def _drop_readiness(rt: Runtime, now=None) -> None:
+    """Once per drop day, shortly before the drop: ping whether the monitor is ready.
+
+    "Ready" means checks ran in the last 15 minutes, at least 90 % of them read a stock
+    status, and no retailer is paused. Otherwise the ping is a warning.
+    """
+    st = rt.settings
+    days = {d.strip().lower()[:3] for d in st.drop_check_days.split(",") if d.strip()}
+    if not days:
+        return
+    try:
+        tz = ZoneInfo(st.timezone)
+    except Exception:  # noqa: BLE001
+        tz = ZoneInfo("UTC")
+    now = now or utcnow()
+    local = now.astimezone(tz)
+    hour, _, minute = st.drop_check_time.partition(":")
+    start = local.replace(hour=int(hour), minute=int(minute or 0), second=0, microsecond=0)
+    if local.strftime("%a").lower() not in days or not (
+            start <= local < start + timedelta(minutes=st.drop_check_window_minutes)):
+        return
+    since = now - timedelta(minutes=15)
+    with rt.db.session() as s:
+        rows = s.execute(
+            select(InventoryCheck.request_success, InventoryCheck.status)
+            .where(InventoryCheck.checked_at >= since, InventoryCheck.purpose == "POLL")
+        ).all()
+        watched = s.scalar(select(func.count(Product.id)).where(Product.enabled.is_(True)))
+    readable = sum(1 for ok, status in rows if ok and status not in (InventoryStatus.UNKNOWN.value,
+                                                                       InventoryStatus.ERROR.value))
+    paused = [slug for slug, r in rt.monitor.retailers.active().items() if r.limiter.is_paused()]
+    ok = bool(rows) and readable >= 0.9 * len(rows) and not paused
+    when = start.strftime("%-I:%M %p")
+    if ok:
+        title = f"Ready for the {local.strftime('%A')} drop"
+        text = (f"Monitor is running: {len(rows)} checks in the last 15 minutes, {readable} read OK. "
+                f"Watching {watched} items. You'll be pinged the moment one is in stock.")
+    else:
+        title = f"Monitor NOT ready for the {local.strftime('%A')} drop"
+        reasons = []
+        if paused:
+            reasons.append("paused: " + ", ".join(p.title() for p in paused))
+        if not rows:
+            reasons.append("no checks in the last 15 minutes")
+        elif readable < 0.9 * len(rows):
+            reasons.append(f"only {readable} of {len(rows)} checks read a stock status")
+        text = f"As of {when}: " + "; ".join(reasons) + "."
+    await rt.notifications.send_status_message(f"drop-ready:{local:%Y%m%d}", title, text, ok)
 
 
 def _prune(rt: Runtime) -> None:

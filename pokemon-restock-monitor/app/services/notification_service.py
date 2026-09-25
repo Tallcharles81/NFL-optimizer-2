@@ -301,6 +301,13 @@ class NotificationService:
             f"The double-check didn't confirm it's in stock ({reason or 'no reason given'}). "
             "Sorry about the ping.")
 
+    async def send_status_message(self, dedupe_key: str, title: str, text: str, ok: bool) -> DeliveryReport:
+        """A health/status ping: ✅ when all is well, otherwise sent as a ⚠️ system alert."""
+        if not ok:
+            return await self.send_system_alert(dedupe_key, title, text)
+        msg = AlertMessage(kind="status", title=f"✅ {title}", text=text)
+        return await self._deliver(f"status:{dedupe_key}", msg, None)
+
     async def send_system_alert(self, dedupe_key: str, title: str, text: str) -> DeliveryReport:
         msg = AlertMessage(kind="system", title=f"⚠️ {title}", text=text)
         return await self._deliver(f"system:{dedupe_key}", msg, None)
