@@ -119,6 +119,12 @@ class Settings(BaseSettings):
     # the item, where Google's approved shopping agent can check out after you confirm.
     buy_with_google_button: bool = True
 
+    # Before known drop windows, send one "ready / not ready" status ping. Days are
+    # comma-separated (e.g. "tue,fri"; empty = off); the time is local (TIMEZONE).
+    drop_check_days: str = ""
+    drop_check_time: str = "02:45"
+    drop_check_window_minutes: float = 45
+
     # --- Notifications -------------------------------------------------------
     notify_console: bool = True
     discord_webhook_url: str | None = None

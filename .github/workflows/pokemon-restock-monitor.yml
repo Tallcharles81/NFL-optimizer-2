@@ -90,6 +90,9 @@ jobs:
       ACCEPT_THIRD_PARTY: "false"
       ACCEPT_UNKNOWN_SELLER: "false"
       # Remind again while still in stock (each run is ~15 min apart)
+      # Target drops often start ~3 AM Tue/Fri: send a "ready / not ready" ping at 2:45 AM.
+      DROP_CHECK_DAYS: ${{ vars.DROP_CHECK_DAYS || 'tue,fri' }}
+      DROP_CHECK_TIME: ${{ vars.DROP_CHECK_TIME || '02:45' }}
       # Alert on the first sighting; the double-check follows (a "false alarm" note if it fails).
       FAST_ALERT: ${{ vars.FAST_ALERT || 'true' }}
       # Faster double-check (the re-check itself takes ~6 s)
