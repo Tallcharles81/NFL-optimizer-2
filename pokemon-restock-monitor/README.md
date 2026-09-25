@@ -59,8 +59,10 @@ the Actions tab.
    to confirm your phone gets it, then run it again unticked.
 
 **Repeat alerts:** while an item stays in stock (sold by Target), you get a "🔁 STILL IN STOCK"
-reminder about every 10 minutes, up to 6 times. Change this with repository
-variables `RESTOCK_REMINDER_MINUTES` / `RESTOCK_REMINDER_MAX` (`RESTOCK_REMINDER_MAX=0` turns it off).
+reminder about every minute, up to 5 times (so you know it's still worth trying). Change this with
+repository variables `RESTOCK_REMINDER_MINUTES` / `RESTOCK_REMINDER_MAX` (`RESTOCK_REMINDER_MAX=0` turns it
+off). When an item you were alerted about sells out again, you get a "Sold out" notice saying how long it
+was in stock.
 
 **BUY WITH GOOGLE button:** Target alerts also have a button that opens Google AI Mode already
 asking to buy that exact item (by TCIN). Target's authorized AI-agent purchases run through Google
