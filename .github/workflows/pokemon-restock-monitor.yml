@@ -1,9 +1,10 @@
 # Pokémon restock monitor on GitHub Actions: no always-on computer needed.
 #
-# Each run keeps re-checking every product (about every 10-15 seconds) for 20
-# minutes, then queues the next run itself, so checking never stops. The
-# 15-minute schedule is only a backup (GitHub's scheduler can be late or not
-# fire at all). Only one run happens at a time.
+# Each run keeps re-checking every product for 20 minutes, then queues the next
+# run itself, so checking is continuous during ACTIVE_HOURS (default 1-10 AM
+# local time; outside it runs stop, and the schedule starts the chain again the
+# next night). The 15-minute schedule is also a backup (GitHub's scheduler can
+# be late or not fire at all). Only one run happens at a time.
 #
 # Off switch: set the repository variable MONITOR_ENABLED=false, or disable the
 # workflow in the Actions tab. Any restock is verified with an independent
@@ -23,7 +24,9 @@ name: Pokémon restock monitor
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Backup starter. 04:00-15:59 UTC covers the default 1-10 AM New York window in both
+    # EDT and EST; the "window" job below decides exactly.
+    - cron: "*/15 4-15 * * *"
   workflow_dispatch:
     inputs:
       test_notification:
@@ -70,7 +73,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Only check stock during ACTIVE_HOURS (local time, default 01:00-10:00): Target's drops
+  # come overnight/early morning, and resting during the day keeps the monitor well under
+  # Target's limits. Tests and diagnostics run any time. ACTIVE_HOURS=always disables this.
+  window:
+    runs-on: ubuntu-latest
+    outputs:
+      active: ${{ steps.check.outputs.active }}
+    steps:
+      - id: check
+        env:
+          TZ: ${{ vars.TIMEZONE || 'America/New_York' }}
+          HOURS: ${{ vars.ACTIVE_HOURS || '01:00-10:00' }}
+          MANUAL: ${{ (inputs.test_notification || inputs.diagnose || inputs.live_test_tcins) && 'true' || 'false' }}
+        run: |
+          now=$((10#$(date +%H%M)))
+          start=$((10#$(echo "${HOURS%-*}" | tr -d :)))
+          end=$((10#$(echo "${HOURS#*-}" | tr -d :)))
+          if [ "$MANUAL" = "true" ] || [ "$HOURS" = "always" ]; then
+            active=true
+          elif [ "$start" -le "$end" ]; then
+            if [ "$now" -ge "$start" ] && [ "$now" -lt "$end" ]; then active=true; else active=false; fi
+          else  # window crosses midnight, e.g. 22:00-06:00
+            if [ "$now" -ge "$start" ] || [ "$now" -lt "$end" ]; then active=true; else active=false; fi
+          fi
+          echo "Local time $(date '+%H:%M %Z'), active hours $HOURS: active=$active"
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
   monitor:
+    needs: window
+    if: needs.window.outputs.active == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     defaults:

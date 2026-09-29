@@ -41,7 +41,10 @@ GitHub Actions, for free on public repos. Each run re-checks every product in
 `catalog/target_30th_celebration.csv` about every 90 seconds for 20 minutes (the Walmart listings in
 `catalog/walmart_30th_celebration.csv` take turns, one per round; see
 [Walmart](#walmart-current-status-and-limitations)), then queues the next
-run itself, so checking is continuous (a 15-minute schedule is only a backup). Restocks are verified
+run itself, so checking is continuous during the active hours: by default **1 AM to 10 AM** (your
+`TIMEZONE`), when Target's drops happen. Outside those hours no checks run; the schedule starts
+monitoring again at 1 AM. Change it with the repository variable `ACTIVE_HOURS` (e.g. `00:00-11:00`,
+or `always`). Restocks are verified
 with a second check and alerted once. State is saved between runs on a `monitor-state` branch.
 To stop monitoring, set the repository variable `MONITOR_ENABLED=false` or disable the workflow in
 the Actions tab.
