@@ -125,6 +125,21 @@ async def main() -> int:
         el = soup.select_one(sel)
         lines.append(f"=== {sel} ===")
         lines.append(str(el)[:3500] if el else "(not found)")
+    # Buy-box candidates, dumped first so they fit in the workflow log.
+    buy_box = ["=== buy-box candidates ==="]
+    for sel in ('[data-test="@web/AddToCart/FulfillmentSection"]', '[data-test="StickyAddToCartFulfillmentSection"]',
+                '[data-test="sticky-atc"]', '[data-test="fulfillmentErrorSection"]',
+                'button[id^="addToCartButtonOrTextIdFor"]', '[data-test*="price" i]', '[data-test*="Price"]'):
+        for el in soup.select(sel)[:2]:
+            buy_box.append(f"--- {sel} ---")
+            buy_box.append(str(el)[:2500])
+    for h in soup.find_all(string=re.compile(r"out of stock|\$\d", re.I))[:4]:
+        node = h.parent
+        for _ in range(3):
+            node = node.parent if node.parent is not None else node
+        buy_box.append(f"--- context of {h.strip()[:40]!r} ---")
+        buy_box.append(str(node)[:2000])
+    lines[1:1] = buy_box
     if args.retailer == "walmart":
         from app.retailers.walmart import page_upc, parse_walmart_page
 
