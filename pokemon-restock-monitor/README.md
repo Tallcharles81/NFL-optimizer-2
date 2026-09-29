@@ -38,7 +38,7 @@ polling that retailer** for a cooldown period and tells you.
 
 The workflow `.github/workflows/pokemon-restock-monitor.yml` (at the repo root) runs the monitor on
 GitHub Actions, for free on public repos. Each run re-checks every product in
-`catalog/target_30th_celebration.csv` about every 45 seconds for 20 minutes (the Walmart listings in
+`catalog/target_30th_celebration.csv` about every 90 seconds for 20 minutes (the Walmart listings in
 `catalog/walmart_30th_celebration.csv` take turns, one per round; see
 [Walmart](#walmart-current-status-and-limitations)), then queues the next
 run itself, so checking is continuous (a 15-minute schedule is only a backup). Restocks are verified
