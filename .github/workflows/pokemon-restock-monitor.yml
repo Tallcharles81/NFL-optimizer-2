@@ -24,9 +24,10 @@ name: Pokémon restock monitor
 
 on:
   schedule:
-    # Backup starter. 04:00-15:59 UTC covers the default 1-10 AM New York window in both
-    # EDT and EST; the "window" job below decides exactly.
-    - cron: "*/15 4-15 * * *"
+    # Backup starter, all day: the "window" job below skips runs outside ACTIVE_HOURS in
+    # seconds. (Limiting the cron to 04-15 UTC left GitHub firing nothing at all on the
+    # first night, so the 1 AM start never happened.)
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       test_notification:
